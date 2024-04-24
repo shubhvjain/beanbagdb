@@ -1,6 +1,6 @@
 require('dotenv').config()
 console.log(process.env)
-const SDB = require("./index.js")
+const SDB = require("../index.js")
 const cdb = require("nano")(process.env.cdburl)
 const doc_obj = {
   name: process.env.cdbname,

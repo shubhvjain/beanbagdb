@@ -1,5 +1,5 @@
 {
-  "name": "infodb-core",
+  "name": "beanbagdb",
   "version": "0.0.1",
   "description": "The core JS library to work with schema with NoSQL DBs",
   "main": "index.js",
