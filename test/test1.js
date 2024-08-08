@@ -1,5 +1,4 @@
 require('dotenv').config()
-console.log(process.env)
 const SDB = require("../index.js")
 const cdb = require("nano")(process.env.cdburl)
 const doc_obj = {
@@ -9,7 +8,7 @@ const doc_obj = {
     const result = await cdb.insert(doc)
     return result
    },
-   // delete: ()=>{db1.destroy},
+   // delete: ()=>{db1.destroy}, 
     update: async (doc)=>{
       const result = await cdb.insert(doc)
       return result
@@ -29,9 +28,9 @@ const doc_obj = {
   }
 }
 
-let db = new SDB.InfoDB(doc_obj)
+let db = new SDB.BeanBagDB(doc_obj)
 try {
-  db.initialize_db()
+  // db.initialize_db()
 } catch (error) {
   console.log(error)
 }

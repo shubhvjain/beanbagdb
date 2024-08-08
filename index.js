@@ -1,22 +1,25 @@
+Ajv = require("ajv");
+sys_sch = require("./system_schema")
+const packageJson = require('./package.json');
 /**
- * This the core class. it is not very useful in itself but can be used to generate a sub class for a specific database for instance CouchDB.
- * It takes in a db_instance argument, which this class relies on perform CRUD operations on the data.
+ * This the core class. it is not very useful in itself but can be used to generate a sub class for a specific database for eg CouchDB.
+ * It takes a db_instance argument, which , this class relies on perform  CRUD operations on the data.
  * Why have a "dumb" class ? : So that the core functionalities remains in a single place and the multiple Databases can be supported. 
  */
-
-Ajv = require("ajv");
 class BeanBagDB {
+  /**
+  * @param {object} db_instance - Database object
+  * db_instance object contains 3 main keys :
+  * - `name` : the name of the local database
+  * - `encryption_key`: this is required for encrypting documents  
+  * - `api` : this is an object that must contain database specific functions. This includes 
+  *   - `insert(doc)`: takes a doc and runs the db insertion function
+  *   - `update(updated_doc)` : gets the updated document and updates it in the DB
+  *   - `search(query)`: takes a query to fetch data from the DB (assuming array of JSON is returned ) 
+  *   - `get(id)`: takes a document id and returns its content 
+  *   - `createIndex(filter)`: to create an index in the database based on a  filter 
+  */
   constructor(db_instance) {
-    /**
-    * db_instance object contains 2 main keys :
-    * - `name` : the name of the local database
-    * - `api` : this is an object that must contain database specific functions. This includes 
-    *   - `insert(doc)`: takes a doc and runs the db insertion function
-    *   - `update(updated_doc)` : gets the updated document and updates it in the DB
-    *   - `search(query)`: takes a query to fetch data from the DB (assuming array of JSON is returned ) 
-    *   - `get(id)`: takes a document id and returns its content 
-    *   - `createIndex(filter)`: to create an index in the database based on a  filter 
-    */
     if (!db_instance["name"]) {
       throw new Error("Database name is required");
     }
@@ -25,228 +28,21 @@ class BeanBagDB {
   }
   init_class() {
     // run from the constructor to initialize the class with required internal variables
-    // see the documentation on the architecture of the DB ti understand what default schemas are required for a smooth functioning of the database
+    // 
     
-    this.valid_system_settings = {
-      db_system_log: {
-        schema: {
-          type: "object",
-          properties: {
-            logs: {
-              type: "array",
-              items: {
-                type: "object",
-                additionalProperties: true,
-              },
-              minItems: 0,
-            },
-          },
-        },
-        settings: {
-          default_data: { logs: [] },
-          editable_fields: ["logs"],
-        },
-      },
-      tags: {
-        schema: {
-          type: "object",
-          properties: {
-            tags: {
-              type: "array",
-              maxItems: 100,
-              minItems: 0,
-              uniqueItems: true,
-              items: {
-                type: "object",
-                properties: {
-                  name: {
-                    type: "string",
+    const version = packageJson.version;
 
-                    maxLength: 500,
-                    pattern: "^[a-zA-Z][a-zA-Z0-9-_.]*$",
-                  },
-                  note: {
-                    type: "string",
-                  },
-                },
-              },
-            },
-          },
-        },
-        settings: {
-          default_data: {
-            tags: [],
-          },
-          editable_fields: ["tags"],
-        },
-      },
-      web_settings: {
-        schema: {
-          type: "object",
-          properties: {
-            theme: {
-              type: "string",
-              enum: ["light", "dark"],
-              default: "dark",
-            },
-          },
-        },
-        settings: {
-          editable_fields: ["theme"],
-          default_data: {
-            theme: "dark",
-          },
-        },
-      },
-    };
+    console.log(`Current version: ${version}`);
+
+    this.valid_system_settings = sys_sch.schema;
     this.valid_schema_doc_schema = {
-      name: "schema_doc",
-      schema: {
-        type: "object",
-        additionalProperties: true,
-        properties: {
-          name: {
-            type: "string",
-            minLength: 5,
-            maxLength: 50,
-            pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
-          },
-          properties: {
-            type: "object",
-            additionalProperties: true,
-            minProperties: 1,
-            maxProperties: 20,
-          },
-          settings: {
-            type: "object",
-            additionalProperties: true,
-            properties: {
-              primary_key: {
-                type: "array",
-                default: [],
-                items: {
-                  type: "string",
-                },
-                maxItems: 10,
-              },
-              editable_fields: {
-                type: "array",
-                default: [],
-                items: {
-                  type: "string",
-                },
-                maxItems: 20,
-              },
-              single_record: {
-                type: "boolean",
-                default: false,
-                description:
-                  "If set, only a single records with this schema will be allowed to insert in the database",
-              },
-            },
-          },
-        },
-        required: ["name", "schema", "settings"],
-      },
-      settings: {
-        primary_key: ["name"],
-        editable_fields: ["schema", "settings"],
-      },
     };
-    this.sample_schema = {
-      name: "my_contact",
-      schema: {
-        title: "People",
-        type: "object",
-        properties: {
-          name: {
-            type: "string",
-          },
-          emails: {
-            type: "array",
-            items: {
-              type: "string",
-              format: "email",
-            },
-          },
-          phones: {
-            type: "array",
-            items: {
-              type: "string",
-            },
-          },
-          address: {
-            type: "string",
-          },
-          notes: {
-            type: "string",
-          },
-          birth_date: {
-            type: "string",
-            format: "date",
-          },
-          company: {
-            type: "string",
-          },
-          website: {
-            type: "string",
-            format: "uri",
-          },
-          socialMedia: {
-            type: "object",
-            properties: {
-              twitter: { type: "string" },
-              facebook: { type: "string" },
-              linkedin: { type: "string" },
-            },
-          },
-          gender: {
-            type: "string",
-            enum: ["male", "female", "other"],
-          },
-          maritalStatus: {
-            type: "string",
-            enum: ["single", "married", "divorced", "widowed", "other"],
-          },
-          hobbies: {
-            type: "array",
-            items: {
-              type: "string",
-            },
-          },
-          languages: {
-            type: "array",
-            items: {
-              type: "string",
-            },
-          },
-          education: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                degree: { type: "string" },
-                institution: { type: "string" },
-                year: { type: "integer" },
-              },
-              required: ["degree", "institution", "year"],
-            },
-          },
-          skills: {
-            type: "array",
-            items: {
-              type: "string",
-            },
-          },
-        },
-        required: ["name"],
-      },
-      settings: {
-        primary_key: ["name"],
-      },
-    };
+    
   }
-
+  /**
+   * Initializes the database making it ready to be used. Typically, required to run after every time package is updated to a new version.
+   * See the documentation on the architecture of the DB to understand what default schemas are required for a smooth functioning of the database
+   */
   async initialize_db() {
     try {
       await this.log({ message: "Database created" });

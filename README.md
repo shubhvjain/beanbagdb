@@ -7,19 +7,12 @@
 v 0.0.0
 </div>
 
-```
-## Intro
-## Installation  
-### Option 1 : To use it with CouchDB 
-### Option 2 : To use it with PouchDB
-### Option 3 : Web app
-## Getting started 
-```
 ## The Database architecture
-A database is a collection of JSON documents. In  a No-SQL database, documents need not have a specific schema. Usually a schema is defined by the developer based on the specific problem the app is trying to solve. In our case is this is also true to a certain extent. While, BeanBagDB allows user to create their own schema for docs, internally all the documents generated have the same structure which accommodates the user defined schema.
+A BeanbagDB is a collection of JSON documents. In a NoSQL database, documents don't need to follow a specific schema. Typically, the developer defines a schema based on the specific problem the app is intended to solve. 
 
-All documents have a following structure :
+While, BeanBagDB allows users to create their own schemas for documents, all document internally share a consistent structure that accommodates the user defined schema. 
 
+Each document in the database follows this structure :
 ```
 {
   _id, _rev
@@ -30,12 +23,68 @@ All documents have a following structure :
   meta : {},
 }
 ```
-Here we  see that the user's data is stored in the `data` objects and it's `schema` is defined. The document also has metadata such as the date on which the was created , last updated and user defined tags.
 
-This schema documents are no exception, they also have a the document structure. 
+Here, the `data` object contains user's information, while the `schema` defines it's associated structure. The `meta` field holds metadata such as creation and last updated on date and user defined tags. 
 
-For a smooth functioning of the system, each database has some system defined "default" schema and seed documents that are added to the data base when it is initialized for the very first time. 
+Even schema documents follow this structure. 
 
+### Examples : 
+
+A system defined schema :
+```
+{ 
+  schema:"schema"
+  data : {
+    name: "system_tags",
+    .....
+  },
+  ...
+}
+```
+(In this example, the schema of this doc is `schema` because it stores the schema document, which will be use to validate documents that follows this schema)
+
+The document adhering to this schema might look like : 
+```
+{
+  schema:"system_tags",
+  data:{
+    tags:["tag1","tag2"]
+  }
+  ....
+}
+```
+User Defined schemas :
+```
+{
+  "schema":"schema",
+  "data":{
+    "name":"contacts",
+    ...
+  }
+}
+```
+And a sample document based on this user defined schema might look like :
+```
+{
+  schema:"contacts",
+  "data":{
+    "name":"Human 1",
+    "email":"human@on.earth"
+  }
+}
+```
+
+### System defined schemas 
+To ensure the system functions smoothly, each DB is initialized with a set of system defined schemas and seed documents. These are automatically added when the database is first created. These system defined are typically named with the prefix `system_`.
+
+List of system schemas :
+- `tags` :
+- `logs` :
+- `secrets` : 
+- `keys` : 
+- `relations` : 
+- `scripts` :
+- `settings` : 
 
 ## The BeanBagDB class
 
