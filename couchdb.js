@@ -1,5 +1,5 @@
 const SDB = require("./index.js")
-class InfoDB_CouchDB extends SDB.InfoDB {
+class BeanBagDB_CouchDB extends SDB.BeanBagDB {
   constructor(db_url,db_name){
     const cdb = require("nano")(db_url)
     const doc_obj = {
@@ -32,4 +32,4 @@ class InfoDB_CouchDB extends SDB.InfoDB {
   }
 }
 
-module.exports = InfoDB_CouchDB
+module.exports = BeanBagDB_CouchDB

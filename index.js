@@ -1,14 +1,32 @@
+/**
+ * This the core class. it is not very useful in itself but can be used to generate a sub class for a specific database for instance CouchDB.
+ * It takes in a db_instance argument, which this class relies on perform CRUD operations on the data.
+ * Why have a "dumb" class ? : So that the core functionalities remains in a single place and the multiple Databases can be supported. 
+ */
+
 Ajv = require("ajv");
-class InfoDB {
+class BeanBagDB {
   constructor(db_instance) {
+    /**
+    * db_instance object contains 2 main keys :
+    * - `name` : the name of the local database
+    * - `api` : this is an object that must contain database specific functions. This includes 
+    *   - `insert(doc)`: takes a doc and runs the db insertion function
+    *   - `update(updated_doc)` : gets the updated document and updates it in the DB
+    *   - `search(query)`: takes a query to fetch data from the DB (assuming array of JSON is returned ) 
+    *   - `get(id)`: takes a document id and returns its content 
+    *   - `createIndex(filter)`: to create an index in the database based on a  filter 
+    */
     if (!db_instance["name"]) {
-      throw new Error("Database name is required. None was provided");
+      throw new Error("Database name is required");
     }
     this.init_class();
     this.db = db_instance.api 
   }
   init_class() {
     // run from the constructor to initialize the class with required internal variables
+    // see the documentation on the architecture of the DB ti understand what default schemas are required for a smooth functioning of the database
+    
     this.valid_system_settings = {
       db_system_log: {
         schema: {
@@ -541,4 +559,4 @@ class InfoDB {
   }
 }
 
-module.exports.InfoDB = InfoDB;
+module.exports.BeanBagDB = BeanBagDB;
