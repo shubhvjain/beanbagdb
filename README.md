@@ -78,13 +78,13 @@ And a sample document based on this user defined schema might look like :
 To ensure the system functions smoothly, each DB is initialized with a set of system defined schemas and seed documents. These are automatically added when the database is first created. These system defined are typically named with the prefix `system_`.
 
 List of system schemas :
-- `tags` :
-- `logs` :
-- `secrets` : 
-- `keys` : 
-- `relations` : 
-- `scripts` :
-- `settings` : 
+- `logs` : to log system and user actions 
+- `settings` : System level settings  (`name`,`value`,`json` for more details)
+- `keys` :  user level settings , these are encrypted and stored in the DB 
+- `secrets` : encrypted text (TODO)
+- `relations` : To create a network of relations  (TODO)
+- `index` :  (TODO)
+- `scripts` :  (TODO)
 
 ## The BeanBagDB class
 
@@ -104,3 +104,34 @@ To add support for a database, we extend the `BeanBagDB` class.
 - `load_doc()`
 - `update_data()`
 - ...
+
+
+## JSON Schema (in progress)
+[Source](https://json-schema.org/) and [another](https://www.learnjsonschema.com/2020-12/)
+
+### Basic schema structure 
+```
+{
+  "name":"",
+  "description":"",
+  "properties":{
+
+  },
+  "settings":{
+
+  }
+}
+```
+#### Properties:
+- Settings :
+  - `additionalProperties:true`
+  - `required:[]`
+  - 
+- Defining custom fields :
+  - `type:""` Valid values: ``
+
+
+#### Settings :
+- `primary_key:[]` 
+- `editable_fields:[]`
+- `single_record : true` 

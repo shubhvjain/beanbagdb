@@ -1,7 +1,81 @@
-const schemas = {
-  // this is to define the schema of all user defined schemas
-  system_schema_structure: {
-    name: "schema_doc",
+const schema_schema = {
+  name: "schema",
+  schema: {
+    type: "object",
+    additionalProperties: true,
+    properties: {
+      title: {
+        type: "string",
+        minLength: 5,
+        maxLength: 50,
+        pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
+      },
+      properties: {
+        type: "object",
+        additionalProperties: true,
+        minProperties: 1,
+        maxProperties: 20,
+      },
+      settings: {
+        type: "object",
+        additionalProperties: true,
+        properties: {
+          primary_key: {
+            type: "array",
+            default: [],
+            items: {
+              type: "string",
+            },
+            maxItems: 10,
+          },
+          editable_fields: {
+            type: "array",
+            default: [],
+            items: {
+              type: "string",
+            },
+            maxItems: 20,
+          },
+          single_record: {
+            type: "boolean",
+            default: false,
+            description:
+              "If set, only a single records with this schema will be allowed to insert in the database",
+          },
+        },
+      },
+    },
+    required: ["name", "schema", "settings"],
+  },
+  settings: {
+    primary_key: ["name"],
+    editable_fields: ["schema", "settings"],
+  },
+};
+
+const system_schemas = {
+  logs: {
+    name: "system_logs",
+    schema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        logs: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+      },
+    },
+    settings: {
+      primary_key: ["name"],
+      single_record: true
+    },
+  },
+  keys: {
+    name: "system_keys",
     schema: {
       type: "object",
       additionalProperties: true,
@@ -12,63 +86,59 @@ const schemas = {
           maxLength: 50,
           pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
         },
-        properties: {
-          type: "object",
-          additionalProperties: true,
-          minProperties: 1,
-          maxProperties: 20,
+        value: {
+          type: "string",
+          minLength: 5,
+          maxLength: 5000,
+          pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
         },
-        settings: {
-          type: "object",
-          additionalProperties: true,
-          properties: {
-            primary_key: {
-              type: "array",
-              default: [],
-              items: {
-                type: "string",
-              },
-              maxItems: 10,
-            },
-            editable_fields: {
-              type: "array",
-              default: [],
-              items: {
-                type: "string",
-              },
-              maxItems: 20,
-            },
-            single_record: {
-              type: "boolean",
-              default: false,
-              description:
-                "If set, only a single records with this schema will be allowed to insert in the database",
-            },
-          },
+        note: {
+          type: "string",
+          minLength: 1,
+          maxLength: 5000,
+          pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
         },
       },
-      required: ["name", "schema", "settings"],
     },
     settings: {
       primary_key: ["name"],
-      editable_fields: ["schema", "settings"],
     },
   },
-  system_logs: {},
-  system_tags: {},
-  system_secrets: {},
-  system_keys: {},
-  system_relations: {},
-  system_scripts: {},
-  system_settings: {},
+  settings: {
+    name: "system_settings",
+    schema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        name: {
+          type: "string",
+          minLength: 5,
+          maxLength: 250,
+          pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
+        },
+        value: {
+          type: "string",
+          minLength: 5,
+          maxLength: 5000,
+          pattern: "^[^\n\r]*$",
+          description:"Must be a single line string"
+        },
+        user_editable: {
+          type: "boolean",
+          default: true,
+          description:
+            "Whether this setting is editable by the user or only by the system",
+        },
+      },
+    },
+    settings: {
+      primary_key: ["name"],
+      editable_fields: ["value"],
+    },
+  },
 };
 
-const sample_schemas = {};
-
-module.exports.schemas = schemas;
-module.exports.sample_schemas = sample_schemas;
-
-this.sample_schema = {
+const sample_schema = {
   name: "my_contact",
   schema: {
     title: "People",
@@ -119,10 +189,6 @@ this.sample_schema = {
         type: "string",
         enum: ["male", "female", "other"],
       },
-      maritalStatus: {
-        type: "string",
-        enum: ["single", "married", "divorced", "widowed", "other"],
-      },
       hobbies: {
         type: "array",
         items: {
@@ -160,3 +226,8 @@ this.sample_schema = {
     primary_key: ["name"],
   },
 };
+
+// const sample_schemas = {};
+module.exports.system_schemas = system_schemas;
+module.exports.schema_schema = schema_schema;
+module.exports.sample_schemas = sample_schema;

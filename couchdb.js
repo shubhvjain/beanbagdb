@@ -1,9 +1,11 @@
 const SDB = require("./index.js")
-class BeanBagDB_CouchDB extends SDB.BeanBagDB {
-  constructor(db_url,db_name){
+
+class BeanBagDB_CouchDB extends SDB {
+  constructor(db_url,db_name,encryption_key){
     const cdb = require("nano")(db_url)
     const doc_obj = {
       name: db_name,
+      encryption_key: encryption_key,
       api:{
        insert: async (doc)=>{
         const result = await cdb.insert(doc)
@@ -16,7 +18,7 @@ class BeanBagDB_CouchDB extends SDB.BeanBagDB {
         },
         search: async (query)=>{
           const results = await cdb.find(query)
-          return results
+          return results // of the form {docs:[],...}
         },
         get: async (id)=>{
           const data = await cdb.get(id)
