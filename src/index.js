@@ -1,6 +1,6 @@
 Ajv = require("ajv");
 sys_sch = require("./system_schema");
-const packageJson = require("./package.json");
+const packageJson = require("../package.json");
 /**
  * This the core class. it is not very useful in itself but can be used to generate a sub class for a specific database for eg CouchDB.
  * It takes a db_instance argument, which , this class relies on perform  CRUD operations on the data.
