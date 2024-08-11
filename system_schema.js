@@ -1,26 +1,37 @@
 const schema_schema = {
   name: "schema",
+  description:"Meta-schema or schema for defining other schemas",
+  system_generated:true,
   schema: {
     type: "object",
-    additionalProperties: true,
+    additionalProperties: false,
     properties: {
-      title: {
+      system_generated:{
+        type:"boolean",
+        default:false
+      },
+      name: {
         type: "string",
         minLength: 5,
         maxLength: 50,
         pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
       },
-      properties: {
+      description:{
+        type:"string",
+        minLength:1,
+        maxLength:1000
+      },
+      schema: {
         type: "object",
         additionalProperties: true,
         minProperties: 1,
-        maxProperties: 20,
+        maxProperties: 50,
       },
       settings: {
         type: "object",
         additionalProperties: true,
         properties: {
-          primary_key: {
+          primary_keys: {
             type: "array",
             default: [],
             items: {
@@ -36,6 +47,14 @@ const schema_schema = {
             },
             maxItems: 20,
           },
+          encrypted_fields: {
+            type: "array",
+            default: [],
+            items: {
+              type: "string",
+            },
+            maxItems: 10,
+          },
           single_record: {
             type: "boolean",
             default: false,
@@ -45,7 +64,7 @@ const schema_schema = {
         },
       },
     },
-    required: ["name", "schema", "settings"],
+    required: ["name","description","schema", "settings"],
   },
   settings: {
     primary_key: ["name"],
@@ -55,6 +74,8 @@ const schema_schema = {
 
 const system_schemas = {
   logs: {
+    system_generated:true,
+    description:"Schema for the log doc. Single log doc for the whole DB to log stuff about the DB",
     name: "system_logs",
     schema: {
       type: "object",
@@ -70,15 +91,17 @@ const system_schemas = {
       },
     },
     settings: {
-      primary_key: ["name"],
       single_record: true
     },
   },
   keys: {
+    system_generated:true,
+    description:"To store user defined key. this can include anything like API tokens etc. There is a special method to fetch this. The values are encrypted",
     name: "system_keys",
     schema: {
       type: "object",
       additionalProperties: true,
+      required:["name","value"],
       properties: {
         name: {
           type: "string",
@@ -90,7 +113,8 @@ const system_schemas = {
           type: "string",
           minLength: 5,
           maxLength: 5000,
-          pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
+          pattern: "^[^\n\r]*$",
+          description:"Must be a single line string"
         },
         note: {
           type: "string",
@@ -101,12 +125,16 @@ const system_schemas = {
       },
     },
     settings: {
-      primary_key: ["name"],
+      primary_keys: ["name"],
+      encrypted_fields:["value"]
     },
   },
   settings: {
+    system_generated:true,
+    description:"The system relies on these settings for proper functioning or enabling optional features.",
     name: "system_settings",
     schema: {
+      required:["name","value"],
       type: "object",
       additionalProperties: true,
       properties: {
@@ -132,102 +160,10 @@ const system_schemas = {
       },
     },
     settings: {
-      primary_key: ["name"],
+      primary_keys: ["name"],
       editable_fields: ["value"],
     },
   },
 };
-
-const sample_schema = {
-  name: "my_contact",
-  schema: {
-    title: "People",
-    type: "object",
-    properties: {
-      name: {
-        type: "string",
-      },
-      emails: {
-        type: "array",
-        items: {
-          type: "string",
-          format: "email",
-        },
-      },
-      phones: {
-        type: "array",
-        items: {
-          type: "string",
-        },
-      },
-      address: {
-        type: "string",
-      },
-      notes: {
-        type: "string",
-      },
-      birth_date: {
-        type: "string",
-        format: "date",
-      },
-      company: {
-        type: "string",
-      },
-      website: {
-        type: "string",
-        format: "uri",
-      },
-      socialMedia: {
-        type: "object",
-        properties: {
-          twitter: { type: "string" },
-          facebook: { type: "string" },
-          linkedin: { type: "string" },
-        },
-      },
-      gender: {
-        type: "string",
-        enum: ["male", "female", "other"],
-      },
-      hobbies: {
-        type: "array",
-        items: {
-          type: "string",
-        },
-      },
-      languages: {
-        type: "array",
-        items: {
-          type: "string",
-        },
-      },
-      education: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            degree: { type: "string" },
-            institution: { type: "string" },
-            year: { type: "integer" },
-          },
-          required: ["degree", "institution", "year"],
-        },
-      },
-      skills: {
-        type: "array",
-        items: {
-          type: "string",
-        },
-      },
-    },
-    required: ["name"],
-  },
-  settings: {
-    primary_key: ["name"],
-  },
-};
-
-// const sample_schemas = {};
 module.exports.system_schemas = system_schemas;
 module.exports.schema_schema = schema_schema;
-module.exports.sample_schemas = sample_schema;
