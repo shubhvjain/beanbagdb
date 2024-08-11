@@ -167,7 +167,7 @@ class BeanBagDB {
   /**
    * Generates a blank schema doc ready to be inserted to the database. Note that no validation is done. This is for internal use
    * @param {string} schema_name 
-   *  @param {Object} schema_object 
+   * @param {Object} schema_object 
    * @param {Object} data 
    * @returns {Object}
    */
@@ -209,26 +209,45 @@ class BeanBagDB {
     return doc;
   }
 
+ 
   /**
+   * Returns schema document for the given schema name s 
+   * @param {String} schema_name - Schema name
+   */
+  async get_schema_doc(schema_name){
+    let schemaSearch = await this.db_api.search({selector: { schema: "schema", "data.name": schema_name }})
+    if (schemaSearch.docs.length == 0) {throw new Error("Schema not found")}
+    return schemaSearch.docs[0]["data"]
+  }
+
+   /**
    * Fetches a document based on a given schema and primary key. 
    * In case schema has a single record, leave the primary_key blank `[]`
    * Can also be used to get special system docs such as settings 
    * @param {string} schema_name
-   * @param {Array} primary_key
+   * @param {Object} primary_key
    * @returns object
    */
-  async get_doc(schema_name, primary_key) {
-    // incomplete
-    let schemaSearch = await this.db_api.search({
-      selector: { schema: "schema", "data.name": schema_name },
-    });
-    if (schema.docs.length == 0) {
-      throw new Error("Schema not found");
+  async get_doc(schema_name, primary_key={}) {
+    let s_doc = await this.get_schema_doc(schema_name)
+    if(s_doc["settings"]["primary_keys"]&& s_doc["settings"]["primary_keys"].length>0){
+      let A = s_doc["settings"]["primary_keys"]
+      console.log(A)
+      //let B = Object.keys(primary_key)
+      //let missingValues  = A.filter(value=>!B.includes(value))
+      let search_criteria = {"schema":schema_name}
+      A.forEach(itm=>{
+        if(!primary_key[itm]){throw new Error("Incomplete Primary key set. Required field(s) : "+A.join(","))}
+        search_criteria["data."+itm]= primary_key[itm]
+      })
+      console.log(search_criteria)
+      let s = await this.search({selector:search_criteria})
+      return s.docs[0]
+    }else{
+      let s = await this.search({selector:{schema:schema_name}})
+      if (s.docs.length > 1){throw new Error("Invalid schema. At least one primary key must be defined or set the singleRecord option to true. ")}
+      return s.docs[0]
     }
-    let schema = schemaSearch.docs[0]["data"];
-
-    // let doc = await this.db.get(doc_id);
-    return doc;
   }
 
   //** Search document  */
@@ -240,6 +259,9 @@ class BeanBagDB {
    * @param {Object} criteria 
    */
   async search(criteria) {
+    if(!criteria["selector"]){
+      throw new Error("Invalid search query.")
+    }
     if (!criteria["selector"]["schema"]) {
       throw new Error("The search criteria must contain the schema");
     }

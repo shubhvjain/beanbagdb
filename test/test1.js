@@ -1,5 +1,5 @@
 require("dotenv").config();
-const cbbdb = require("../couchdb.js");
+const cbbdb = require("../src/couchdb.js");
 async function main1() {
   let db = new cbbdb(process.env.cdburl, process.env.cdbname, "sample_key");
   
@@ -88,6 +88,20 @@ async function main3() {
   }
 }
 
+
+async function main4(){
+  let db = new cbbdb(process.env.cdburl, process.env.cdbname, "sample_key");
+  await db.ready();
+  let doc1 = await db.get("e94b5eebe6b3c6dab8e2508d5908717c")
+  console.log(doc1)
+  let doc2 = await db.get_doc("system_keys",{"name":"sample2"})
+  console.log(doc2)
+  let doc3 = await db.get_doc("system_logs")
+  console.log(doc3)
+}
+
 // main1().then(() => {console.log("Bye.");}).catch();
 
-main3().then(() => {console.log("Bye.");}).catch();
+// main3().then(() => {console.log("Bye.");}).catch();
+
+main4().then(() => {console.log("Bye.");}).catch();
