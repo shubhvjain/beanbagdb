@@ -49,6 +49,7 @@ class BeanBagDB {
    * @returns {object} {initialized:boolean,latest:boolean}
    */
   async _check_ready_to_use() {
+    // @TODO check if ready to use in major API methods 
     let check = { initialized: false, latest: false };
     // @TODO this is not really fool proof. check all the required docs, they have the system_generated flag
     // what if some user mistakenly modifies or deletes some of the required docs ?
@@ -199,6 +200,22 @@ class BeanBagDB {
   }
 
   //**  Get documents ***/
+
+  decrypt_doc(schema_obj,doc_obj){
+    if(schema_obj.settings["encrypted_fields"]&&schema_obj.settings["encrypted_fields"].length>0){
+      schema_obj.settings["encrypted_fields"].forEach(itm=>{doc_obj.data[itm] = this.utils.decrypt(doc_obj.data[itm],this.encryption_key)})
+    }
+    return {...doc_obj}
+  }
+
+  encrypt_doc(schema_obj,doc_obj){
+    if(schema_obj.settings["encrypted_fields"]&&schema_obj.settings["encrypted_fields"].length>0){
+      schema_obj.settings["encrypted_fields"].forEach(itm=>{doc_obj.data[itm] = this.utils.encrypt(doc_obj.data[itm],this.encryption_key)})
+    }
+    return {...doc_obj}
+  }
+
+
   /**
    * Returns a document with the provided ID
    * @param {string} doc_id
@@ -206,6 +223,8 @@ class BeanBagDB {
    */
   async get(doc_id) {
     let doc = await this.db_api.get(doc_id);
+    let schema = await this.get_schema_doc(doc.schema)
+    doc = this.decrypt_doc(schema,doc)
     return doc;
   }
 
@@ -230,24 +249,24 @@ class BeanBagDB {
    */
   async get_doc(schema_name, primary_key={}) {
     let s_doc = await this.get_schema_doc(schema_name)
+    let doc_obj;
     if(s_doc["settings"]["primary_keys"]&& s_doc["settings"]["primary_keys"].length>0){
       let A = s_doc["settings"]["primary_keys"]
-      console.log(A)
-      //let B = Object.keys(primary_key)
-      //let missingValues  = A.filter(value=>!B.includes(value))
       let search_criteria = {"schema":schema_name}
       A.forEach(itm=>{
         if(!primary_key[itm]){throw new Error("Incomplete Primary key set. Required field(s) : "+A.join(","))}
         search_criteria["data."+itm]= primary_key[itm]
       })
-      console.log(search_criteria)
       let s = await this.search({selector:search_criteria})
-      return s.docs[0]
+      doc_obj = s.docs[0]
     }else{
       let s = await this.search({selector:{schema:schema_name}})
       if (s.docs.length > 1){throw new Error("Invalid schema. At least one primary key must be defined or set the singleRecord option to true. ")}
-      return s.docs[0]
+      doc_obj = s.docs[0]
     }
+    doc_obj  = this.decrypt_doc(s_doc,doc_obj)
+    return doc_obj
+  
   }
 
   //** Search document  */
