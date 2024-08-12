@@ -100,8 +100,23 @@ async function main4(){
   console.log(doc3)
 }
 
+async function main5(){
+  let db = new cbbdb(process.env.cdburl, process.env.cdbname, "sample_key");
+  await db.ready();
+  let id = "e94b5eebe6b3c6dab8e2508d5908717c"
+  let rec_1 = await db.get(id)
+  let rec1 = rec_1.doc
+  console.log(rec1)
+  let rec1u = await db.update(id,"",{data:{"value":"secret key updated"},meta:{tags:["testing1","testing2","money"]}})
+  console.log(rec1u)
+  let r1 = await db.get(id)
+  console.log(r1)
+}
+
 // main1().then(() => {console.log("Bye.");}).catch();
 
 // main3().then(() => {console.log("Bye.");}).catch();
 
-main4().then(() => {console.log("Bye.");}).catch();
+// main4().then(() => {console.log("Bye.");}).catch();
+
+main5().then(() => {console.log("Bye.");}).catch();

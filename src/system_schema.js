@@ -165,5 +165,20 @@ const system_schemas = {
     },
   },
 };
+
+// this is not stored in the DB. only for validating the metadata during doc update
+const editable_metadata_schema = {
+  additionalProperties: false,
+  properties:{
+    tags:{
+      type:"array",
+      items:{type:"string"},
+      default:[],
+      maxItems: 40,
+    }
+  }
+}
+
 module.exports.system_schemas = system_schemas;
 module.exports.schema_schema = schema_schema;
+module.exports.editable_metadata_schema = editable_metadata_schema;
