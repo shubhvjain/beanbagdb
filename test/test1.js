@@ -1,5 +1,7 @@
 require("dotenv").config();
 const cbbdb = require("../src/couchdb.js");
+const pbbdb = require("../src/pouchdb.js");
+
 async function main1() {
   let db = new cbbdb(process.env.cdburl, process.env.cdbname, "sample_key");
   
@@ -113,10 +115,21 @@ async function main5(){
   console.log(r1)
 }
 
+async function main6(){
+  let db = new pbbdb(process.env.cdburl, process.env.cdbname, "sample_key");
+  await db.ready()
+  //await db.initialize_db()
+  
+}
+
 // main1().then(() => {console.log("Bye.");}).catch();
 
 // main3().then(() => {console.log("Bye.");}).catch();
 
 // main4().then(() => {console.log("Bye.");}).catch();
 
-main5().then(() => {console.log("Bye.");}).catch();
+// main5().then(() => {console.log("Bye.");}).catch();
+
+main6().then(() => {console.log("Bye.");}).catch();
+
+

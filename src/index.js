@@ -16,19 +16,17 @@ class BeanBagDB {
    * - `utils` : this includes `encrypt`, `decrypt`
    */
   constructor(db_instance) {
-    const requiredFields = ["name", "encryption_key", "api", "utils"];
-    for (const field of requiredFields) {
-      if (!db_instance[field]) {throw new Error(`${field} is required`);}
-    }
+    this._check_required_fields(["name", "encryption_key", "api", "utils"],db_instance)
+    this._check_required_fields(["insert", "update", "delete", "search","get","createIndex"],db_instance.api)
+    this._check_required_fields(["encrypt", "decrypt","ping"],db_instance.utils)
+
     this.name = db_instance.name;
     this.encryption_key = db_instance.encryption_key;
 
-    // @TODO check this if they have everything needed
     this.db_api = db_instance.api;
     this.utils = db_instance.utils;
 
     this._version = packageJson.version; // package version
-    let theClass = this;
     this.ready_check = { initialized: false, latest: false };
     console.log("Run ready() now");
   }
@@ -344,6 +342,11 @@ class BeanBagDB {
 
   //////// Helper method ////////
 
+  _check_required_fields(requiredFields,obj){
+    for (const field of requiredFields) {
+      if (!obj[field]) {throw new Error(`${field} is required`);}
+    }
+  }
 
   /**
    * 
