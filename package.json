@@ -4,7 +4,7 @@
   "description": "The core JS library to work with schema with NoSQL DBs",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha"
   },
   "repository": {
     "type": "git",
@@ -29,5 +29,9 @@
     "pouchdb": "^9.0.0",
     "pouchdb-adapter-memory": "^9.0.0",
     "pouchdb-find": "^9.0.0"
+  },
+  "devDependencies": {
+    "chai": "^5.1.1",
+    "mocha": "^10.7.3"
   }
 }
