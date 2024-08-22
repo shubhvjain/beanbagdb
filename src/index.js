@@ -16,9 +16,13 @@ class BeanBagDB {
    * - `utils` : this includes `encrypt`, `decrypt`
    */
   constructor(db_instance) {
+    // data validation checks
     this._check_required_fields(["name", "encryption_key", "api", "utils"],db_instance)
     this._check_required_fields(["insert", "update", "delete", "search","get","createIndex"],db_instance.api)
     this._check_required_fields(["encrypt", "decrypt","ping"],db_instance.utils)
+
+    if(db_instance.encryption_key.length>20){throw new Error("encryption_key must have at least 20 letters")}
+    // db name should not be blank, 
 
     this.name = db_instance.name;
     this.encryption_key = db_instance.encryption_key;
@@ -41,6 +45,10 @@ class BeanBagDB {
     if (this.ready_check.initialized) {
       console.log("Ready to use!");
     }
+  }
+
+  check_if_ready(){
+    return this.ready_check.ready 
   }
 
   /**
@@ -270,7 +278,7 @@ class BeanBagDB {
    * @param {Boolean} save_conflict = true -
    * @returns
    */
-  async update(doc_id, rev_id, updates, save_conflict = true) {
+  async update(doc_id, rev_id, updates, update_source="api",save_conflict = true) {
     // making a big assumption here : primary key fields cannot be edited
     // so updating the doc will not generate primary key conflicts
     let req_data = await this.get(doc_id,true);
@@ -334,11 +342,14 @@ class BeanBagDB {
     }
 
     full_doc.meta["updated_on"] = this._get_now_unix_timestamp()
+    full_doc.meta["updated_by"] = update_source
     let up = await this.db_api.update(full_doc);
     return up;
   }
 
-  async delete(doc_id) {}
+  async delete(doc_id) {
+    await this.db_api.delete(doc_id)
+  }
 
   //////// Helper method ////////
 
@@ -424,6 +435,7 @@ class BeanBagDB {
       meta: {
         createdOn: this._get_now_unix_timestamp(),
         tags: [],
+        app :{}
       },
       schema: schema_name,
     };

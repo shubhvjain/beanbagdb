@@ -130,3 +130,5 @@ dist
 .pnp.*
 
 .DS_Store
+test/test_database_24*
+test_database_24

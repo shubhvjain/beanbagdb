@@ -28,6 +28,10 @@ class BeanBagDB_CouchDB extends SDB {
         createIndex: async (filter)=>{
           const data = await cdb.createIndex(filter)
           return data
+        },
+        delete: async (doc_id)=>{
+          const data = await cdb.get(id)
+          await cdb.destroy(data._id,data._rev)
         }
       },
       utils:{
