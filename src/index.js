@@ -33,6 +33,8 @@ class BeanBagDB {
     this._version = packageJson.version; // package version
     this.ready_check = { initialized: false, latest: false };
     console.log("Run ready() now");
+
+    this.plugins = {}
   }
 
   /**
@@ -349,6 +351,20 @@ class BeanBagDB {
 
   async delete(doc_id) {
     await this.db_api.delete(doc_id)
+  }
+
+
+  async load_plugin(plugin_name,plugin_module){
+    this.plugins[plugin_name] = {}
+    for (let func_name in plugin_module){
+      if(typeof plugin_module[func_name]=='function'){
+        this.plugins[plugin_name][func_name] = plugin_module[func_name].bind(null,this)
+      }
+    }
+    // Check if the plugin has an on_load method and call it
+    if (typeof this.plugins[plugin_name].on_load === 'function') {
+      await this.plugins[plugin_name].on_load();
+    }
   }
 
   //////// Helper method ////////
