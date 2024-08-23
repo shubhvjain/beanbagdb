@@ -1,7 +1,7 @@
 {
   "name": "beanbagdb",
-  "version": "0.0.1",
-  "description": "The core JS library to work with schema with NoSQL DBs",
+  "version": "0.0.5",
+  "description": "A JS library to introduce a schema layer to a No-SQL local database",
   "main": "index.js",
   "scripts": {
     "test": "mocha"
@@ -14,7 +14,8 @@
     "couchdb",
     "pouchdb",
     "local",
-    "database"
+    "database",
+    "schema"
   ],
   "author": "svj",
   "license": "ISC",
