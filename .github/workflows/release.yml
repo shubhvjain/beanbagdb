@@ -9,7 +9,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: read
+      id-token: write
     steps:
     # Step 1: Check out the code from the repository
     - name: Checkout code
@@ -33,7 +35,7 @@ jobs:
 
     # Step 5: Publish to npm if tests pass
     - name: Publish to npm
-      run: npm publish
+      run: npm publish --access public
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
