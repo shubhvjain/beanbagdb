@@ -1,9 +1,12 @@
 // to test initialization of the BeanBagDB class. using in memory pouch db for testing to avoid additional setup.
-const PouchDB = require("pouchdb");
-PouchDB.plugin(require("pouchdb-find"));
-const crypto = require('crypto');
+import PouchDB from 'pouchdb';
+import pouchdbFind from 'pouchdb-find';
+PouchDB.plugin(pouchdbFind)
+import { scryptSync, randomBytes, createCipheriv, createDecipheriv } from 'crypto';
 const db_name = "test_database_24"
 const pdb = new PouchDB(db_name);
+import Ajv  from 'ajv';
+
 const doc_obj = {
   name: db_name,
   encryption_key: "qwertyuiopaqwsde1254",
@@ -37,19 +40,19 @@ const doc_obj = {
   },
   utils: {
     encrypt: (text, encryptionKey) => {
-      const key = crypto.scryptSync(encryptionKey, "salt", 32); // Derive a 256-bit key
-      const iv = crypto.randomBytes(16); // Initialization vector
-      const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+      const key = scryptSync(encryptionKey, "salt", 32); // Derive a 256-bit key
+      const iv = randomBytes(16); // Initialization vector
+      const cipher = createCipheriv("aes-256-cbc", key, iv);
       let encrypted = cipher.update(text, "utf8", "hex");
       encrypted += cipher.final("hex");
       return iv.toString("hex") + ":" + encrypted; // Prepend the IV for later use
     },
     decrypt: (encryptedText, encryptionKey) => {
-      const key = crypto.scryptSync(encryptionKey, "salt", 32); // Derive a 256-bit key
+      const key = scryptSync(encryptionKey, "salt", 32); // Derive a 256-bit key
       const [iv, encrypted] = encryptedText
         .split(":")
         .map((part) => Buffer.from(part, "hex"));
-      const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+      const decipher = createDecipheriv("aes-256-cbc", key, iv);
       let decrypted = decipher.update(encrypted, "hex", "utf8");
       decrypted += decipher.final("utf8");
       return decrypted;
@@ -57,15 +60,20 @@ const doc_obj = {
     ping: () => {
       // @TODO ping the database to check connectivity when class is ready to use
     },
+    validate_schema: (schema_obj, data_obj)=>{
+      const ajv = new Ajv({code: {esm: true}})  // options can be passed, e.g. {allErrors: true}
+      const validate = ajv.compile(schema_obj);
+      const valid = validate(data_obj);
+      return {valid,validate}
+    }
   },
 }
 
-the_correct_object = {};
+let the_correct_object = {};
 
-const assert = require("assert");
+import { throws, strictEqual } from "assert";
 
-const BeanBagDB = require("../src/index");
-
+ import BeanBagDB  from '../src/index.js';
 /**
  * Initial setup
  * database is the global var where the beanbag class is initialized
@@ -77,7 +85,7 @@ const test_set1 = [
   ["api", {}],
 ];
 const test_obj = { name: "bla", encryption_key: "1234567890opuityerqwas" };
-const full_util = {util: { encrypt: () => {}, decrypt: () => {}, ping: () => {} },}
+const full_util = {util: { encrypt: () => {}, decrypt: () => {}, ping: () => {} , validate_schema:()=>{}},}
 const full_api = {api: { update: () => {}, delete: () => {}, get: () => {}, search: () => {}, createIndex: () => {}}}
 const test_set_api = [
   [
@@ -130,18 +138,22 @@ const test_set_api = [
   ],
   [
     "util.encrypt missing",
-    { ...test_obj, ...full_api, util: { decrypt: () => {}, ping: () => {} } },
+    { ...test_obj, ...full_api, util: { decrypt: () => {}, ping: () => {}, validate_schema:()=>{} } },
   ],
   [
     "util.decrypt missing",
-    { ...test_obj, ...full_api, util: { encrypt: () => {}, ping: () => {} } },
+    { ...test_obj, ...full_api, util: { encrypt: () => {}, ping: () => {}, validate_schema:()=>{} } },
+  ],
+  [
+    "util.validate_schema missing",
+    { ...test_obj, ...full_api, util: { encrypt: () => {}, ping: () => {}, decrypt: () => {} } },
   ],
   [
     "util.ping missing",
     {
       ...test_obj,
       ...full_api,
-      util: { encrypt: () => {}, decrypt: () => {} },
+      util: { encrypt: () => {}, decrypt: () => {} ,validate_schema:()=>{}},
     },
   ],
 ];
@@ -150,7 +162,7 @@ let database;
 
 describe("Tests initialization of the BeanBagDB class without no init object", async () => {
   it("Throws error", () => {
-    assert.throws(() => {
+    throws(() => {
       database = new BeanBagDB();
     }, Error);
   });
@@ -161,18 +173,18 @@ describe("Tests initialization of the BeanBagDB class with incomplete init objec
    * Proper object : {name,encryption_key,api:{insert,updated,delete,search,get,createIndex},utils:{encrypt,decrypt,ping}}
    */
   it("Blank object throw error", () => {
-    assert.throws(() => {
+    throws(() => {
       database = new BeanBagDB({});
     }, Error);
   });
   it("some invalid field throws error", () => {
-    assert.throws(() => {
+    throws(() => {
       database = new BeanBagDB({ dbname: "sample" });
     }, Error);
   });
   test_set1.forEach((item) => {
     it(`only ${item[0]} throws error`, () => {
-      assert.throws(() => {
+      throws(() => {
         let key = item[0];
         database = new BeanBagDB({ key: item[1] });
       }, Error);
@@ -180,7 +192,7 @@ describe("Tests initialization of the BeanBagDB class with incomplete init objec
   });
   test_set_api.forEach((item) => {
     it(`${item[0]} throws error`, () => {
-      assert.throws(() => {
+      throws(() => {
         let obj = { ...item[1] };
         database = new BeanBagDB(obj);
       }, Error);
@@ -190,7 +202,7 @@ describe("Tests initialization of the BeanBagDB class with incomplete init objec
 
 describe("Successful database class init", async () => {
   it("global database variable not yet initialized", () => {
-    assert.strictEqual(
+    strictEqual(
       database instanceof BeanBagDB,
       false,
       "The variable is not yet initialized"
@@ -199,7 +211,7 @@ describe("Successful database class init", async () => {
 
   it("DB init successful", () => {
     database = new BeanBagDB(doc_obj);
-    assert.strictEqual(
+    strictEqual(
       database instanceof BeanBagDB,
       true,
       "The variable is initialized successfully"
