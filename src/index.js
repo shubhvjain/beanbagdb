@@ -159,7 +159,36 @@ class BeanBagDB {
   }
 
   validate_schema_object(schema_doc){
+    let errors = []
+    if(!schema_doc["schema"]["type"]){
+      errors.push("Schema must have the field schema.'type' which can only be 'object' ")
+    }else{
+      if(schema_doc["schema"]["type"]!="object"){
+        errors.push("The schema.'type' value  is invalid.Only 'object' allowed")
+      }
+    }
+    if(!schema_doc["schema"]["properties"]){
+      errors.push("The schema.'properties' object does not exists")
+    }else{
+      if(typeof(schema_doc["schema"]["properties"])!="object"){
+        errors.push("Invalid schema.properties. It must be an object and must have atleast one field inside.")
+      }
+      if(Object.keys(schema_doc["schema"]["properties"]).length==0){
+        errors.push("You must define at least one property")
+      }
+    }
 
+    if(!schema_doc["schema"]["additionalProperties"]){
+      errors.push("The schema.'additionalProperties' field is required")
+    }else{
+      if(typeof(schema_doc["schema"]["additionalProperties"])!="boolean"){
+        errors.push("Invalid schema.additionalProperties. It must be a boolean value")
+      }
+    }
+
+    if(errors.length>0){
+      throw new Error("Schema validation errors- "+errors.join(","))
+    }
   }
 
   /**
@@ -255,7 +284,7 @@ class BeanBagDB {
    * @param {Object} data e.g {"name":"","mobile":""...}
    * @param {Object} settings (optional)
    */
-  async insert(schema, data, settings = {}) {
+  async insert(schema, data, meta= {},settings = {}) {
     try {
       let doc_obj = await this._insert_pre_checks(schema, data, settings);
       let new_rec = await this.db_api.insert(doc_obj);
@@ -563,6 +592,10 @@ class BeanBagDB {
 
     // special checks for special docs
     // @TODO : for schema dos: settings fields must be in schema field
+    if(schema=="schema"){
+      //more checks are required
+      this.validate_schema_object(data)
+    }
     // @TODO : check if single record setting is set to true
 
     // duplicate check
