@@ -1,10 +1,10 @@
-name: Release npm Package
+name: Test code on master
 
 # Trigger the workflow on push to the "main" branch
 on:
   push:
     branches:
-      - release
+      - main
 
 jobs:
   build:
@@ -33,9 +33,4 @@ jobs:
     - name: Run tests
       run: npm test
 
-    # Step 5: Publish to npm if tests pass
-    - name: Publish to npm
-      run: npm publish --access public
-      env:
-        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
