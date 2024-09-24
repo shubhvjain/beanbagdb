@@ -1,4 +1,4 @@
-const schema_schema = {
+export const schema_schema = {
   name: "schema",
   description:"Meta-schema or schema for defining other schemas",
   system_generated:true,
@@ -45,7 +45,7 @@ const schema_schema = {
             items: {
               type: "string",
             },
-            maxItems: 20,
+            maxItems: 50,
           },
           encrypted_fields: {
             type: "array",
@@ -53,7 +53,7 @@ const schema_schema = {
             items: {
               type: "string",
             },
-            maxItems: 10,
+            maxItems: 50,
           },
           single_record: {
             type: "boolean",
@@ -68,11 +68,11 @@ const schema_schema = {
   },
   settings: {
     primary_key: ["name"],
-    editable_fields: ["schema", "settings"],
+    editable_fields: ["schema", "settings","description"],
   },
 };
 
-const system_schemas = {
+export const system_schemas = {
   logs: {
     system_generated:true,
     description:"Schema for the log doc. Single log doc for the whole DB to log stuff about the DB",
@@ -167,7 +167,7 @@ const system_schemas = {
 };
 
 // this is not stored in the DB. only for validating the metadata during doc update
-const editable_metadata_schema = {
+export const editable_metadata_schema = {
   additionalProperties: false,
   properties:{
     tags:{
@@ -175,10 +175,12 @@ const editable_metadata_schema = {
       items:{type:"string"},
       default:[],
       maxItems: 40,
+    },
+    link:{
+      type:"string",
+      minLength:2,
+      maxLength:2000,
+      pattern: "^[a-zA-Z0-9-]+$"
     }
   }
 }
-
-module.exports.system_schemas = system_schemas;
-module.exports.schema_schema = schema_schema;
-module.exports.editable_metadata_schema = editable_metadata_schema;
