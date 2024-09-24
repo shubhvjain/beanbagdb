@@ -1,83 +1,13 @@
-// to test initialization of the BeanBagDB class. using in memory pouch db for testing to avoid additional setup.
-import PouchDB from 'pouchdb';
-import pouchdbFind from 'pouchdb-find';
-PouchDB.plugin(pouchdbFind)
-import { scryptSync, randomBytes, createCipheriv, createDecipheriv } from 'crypto';
-const db_name = "test_database_24"
-const pdb = new PouchDB(db_name);
-import Ajv  from 'ajv';
-
-const doc_obj = {
-  name: db_name,
-  encryption_key: "qwertyuiopaqwsde1254",
-  api: {
-    insert: async (doc) => {
-      const result = await pdb.post(doc);
-      return result;
-    },
-    // delete: ()=>{db1.destroy},
-    update: async (doc) => {
-      const result = await pdb.put(doc);
-      return result;
-    },
-    search: async (query) => {
-      const results = await pdb.find(query);
-      return results; // of the form {docs:[],...}
-    },
-    get: async (id) => {
-      const data = await pdb.get(id);
-      return data;
-    },
-    delete: async (id) => {
-      const doc = await pdb.get(id);
-      const resp = await pdb.remove(doc);
-      return resp;
-    },
-    createIndex: async (filter) => {
-      const data = await pdb.createIndex(filter);
-      return data;
-    },
-  },
-  utils: {
-    encrypt: (text, encryptionKey) => {
-      const key = scryptSync(encryptionKey, "salt", 32); // Derive a 256-bit key
-      const iv = randomBytes(16); // Initialization vector
-      const cipher = createCipheriv("aes-256-cbc", key, iv);
-      let encrypted = cipher.update(text, "utf8", "hex");
-      encrypted += cipher.final("hex");
-      return iv.toString("hex") + ":" + encrypted; // Prepend the IV for later use
-    },
-    decrypt: (encryptedText, encryptionKey) => {
-      const key = scryptSync(encryptionKey, "salt", 32); // Derive a 256-bit key
-      const [iv, encrypted] = encryptedText
-        .split(":")
-        .map((part) => Buffer.from(part, "hex"));
-      const decipher = createDecipheriv("aes-256-cbc", key, iv);
-      let decrypted = decipher.update(encrypted, "hex", "utf8");
-      decrypted += decipher.final("utf8");
-      return decrypted;
-    },
-    ping: () => {
-      // @TODO ping the database to check connectivity when class is ready to use
-    },
-    validate_schema: (schema_obj, data_obj)=>{
-      const ajv = new Ajv({code: {esm: true}})  // options can be passed, e.g. {allErrors: true}
-      const validate = ajv.compile(schema_obj);
-      const valid = validate(data_obj);
-      return {valid,validate}
-    }
-  },
-}
-
-let the_correct_object = {};
-
+// to test initialization of the BeanBagDB class 
+import { get_pdb_doc } from './pouchdb.js';
 import { throws, strictEqual } from "assert";
+import BeanBagDB  from '../src/index.js';
 
- import BeanBagDB  from '../src/index.js';
 /**
  * Initial setup
  * database is the global var where the beanbag class is initialized
  */
+
 const test_set1 = [
   ["name", "sample"],
   ["encryption_key", "sample_key"],
@@ -210,6 +140,7 @@ describe("Successful database class init", async () => {
   });
 
   it("DB init successful", () => {
+    let doc_obj = get_pdb_doc("test_database_24","qwertyuiopaqwsde1254")
     database = new BeanBagDB(doc_obj);
     strictEqual(
       database instanceof BeanBagDB,
