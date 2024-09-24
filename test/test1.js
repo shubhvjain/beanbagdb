@@ -155,3 +155,24 @@
 // //   await db.ready();
 // //   db.load_plugin("sample",pl1)
 // // })();
+
+import { get_pdb_doc } from './pouchdb.js';
+import { throws, strictEqual } from "assert";
+import BeanBagDB  from '../src/index.js';
+
+(async()=>{
+  let schema_docs_invalid = [
+    {
+     "name":"",
+     "description":"",
+     "schema":{},
+     "settings":{} 
+    }
+    
+    ]
+  let doc_obj = get_pdb_doc("test_database_26","qwertyuiopaqwsde1254")
+  let database = new BeanBagDB(doc_obj);
+  database.initialize_db()
+  database.ready()
+  let a = await database.insert("schema",schema_docs_invalid[0])
+})()

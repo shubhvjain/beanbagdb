@@ -15,17 +15,20 @@ export const schema_schema = {
         minLength: 5,
         maxLength: 50,
         pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
+        description:"This is the name of the schema.It cannot be changed later"
       },
       description:{
         type:"string",
-        minLength:1,
-        maxLength:1000
+        minLength:0,
+        maxLength:1000,
+        description:"A small description of what  data in this schema stores."
       },
       schema: {
         type: "object",
         additionalProperties: true,
         minProperties: 1,
         maxProperties: 50,
+        description:"This must be a valid JSON Schema which will be used to validate documents created with this schema.See this https://tour.json-schema.org/",
       },
       settings: {
         type: "object",
