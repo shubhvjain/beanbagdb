@@ -312,7 +312,7 @@ class BeanBagDB {
    * @param {*} schema_name
    * @param {doc_obj} updates {data:{},meta:{}}, need not be the full document, just the new values of all/some fields
    * @param {Boolean} save_conflict = true -
-   * @returns
+   * 
    */
   async update(doc_id, rev_id, updates, update_source="api",save_conflict = true) {
     // making a big assumption here : primary key fields cannot be edited
@@ -418,7 +418,7 @@ class BeanBagDB {
    * 
    * @param {*} obj 
    * @param {*} fields 
-   * @returns 
+   * 
    */
   _filterObject(obj, fields) {
     return fields.reduce((filteredObj, field) => {
