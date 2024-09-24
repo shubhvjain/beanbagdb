@@ -1,0 +1,21 @@
+{
+  "source": {
+    "include": ["src"],    
+    "includePattern": ".+\\.js(doc|x)?$",
+    "excludePattern": "(^|\\/|\\\\)_"
+  },
+  "opts": {
+    "destination": "./docs-static",  
+    "recurse": true,
+    "readme":"./index.md",
+    "tutorials": "./docs"
+  },
+  "plugins": [
+    "plugins/markdown"  
+  ],
+  "templates": {
+    "default": {
+      "outputSourceFiles": false
+    }
+  }
+}
