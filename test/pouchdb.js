@@ -10,6 +10,7 @@ export const get_pdb_doc = (dbname,secret)=>{
 const pdb = new PouchDB(dbname);
   const doc_obj = {
     name: dbname,
+    db_name:"pouchdb",
     encryption_key: secret,
     api: {
       insert: async (doc) => {

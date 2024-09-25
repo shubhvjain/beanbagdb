@@ -34,5 +34,8 @@
     "nano": "^10.1.4",
     "pouchdb": "^9.0.0",
     "pouchdb-find": "^9.0.0"
+  },
+  "mocha": {
+    "spec": "test/**/*.test.js"
   }
 }
