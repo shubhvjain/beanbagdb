@@ -1,11 +1,11 @@
 // const crypto = require('crypto');
 // const SDB = require("beanbagdb")
 
-import * as bdb from "beanbagdb"   
 import Ajv  from 'ajv';
 import nano from "nano";  
+import BeanBagDB  from '../src/index.js';
 
-export class BeanBagDB_CouchDB extends bdb.default {
+export class BeanBagDB_CouchDB extends BeanBagDB {
   constructor(db_url,db_name,encryption_key){
     //const cdb = import("nano")(db_url)
     const cdb = nano(db_url)

@@ -1,4 +1,4 @@
-import * as cdb from "../couch.js"
+import * as cdb from "./couchdb.js"
 import "dotenv/config"
 
 
@@ -23,7 +23,7 @@ import "dotenv/config"
   console.log(sch)
 
 
-})();
+});
 
 
 
