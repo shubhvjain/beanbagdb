@@ -1,7 +1,8 @@
 export const schema_schema = {
   name: "schema",
-  description:"Meta-schema or schema for defining other schemas",
+  description:"Meta-schema or the schema for defining other schemas",
   system_generated:true,
+  version:0.5,
   schema: {
     type: "object",
     additionalProperties: false,
@@ -10,6 +11,12 @@ export const schema_schema = {
         type:"boolean",
         default:false
       },
+      version: {
+        type: "number",
+        minimum: 0,
+        default: 1,
+        description:"This is an optional field.To be used primarily for system schemas"
+      }, 
       name: {
         type: "string",
         minLength: 5,
@@ -76,29 +83,9 @@ export const schema_schema = {
 };
 
 export const system_schemas = {
-  logs: {
-    system_generated:true,
-    description:"Schema for the log doc. Single log doc for the whole DB to log stuff about the DB",
-    name: "system_logs",
-    schema: {
-      type: "object",
-      additionalProperties: true,
-      properties: {
-        logs: {
-          type: "array",
-          items: {
-            type: "object",
-            additionalProperties: true,
-          },
-        },
-      },
-    },
-    settings: {
-      single_record: true
-    },
-  },
   keys: {
     system_generated:true,
+    version:0.5,
     description:"To store user defined key. this can include anything like API tokens etc. There is a special method to fetch this. The values are encrypted",
     name: "system_keys",
     schema: {
@@ -133,6 +120,7 @@ export const system_schemas = {
     },
   },
   settings: {
+    version:0.5,
     system_generated:true,
     description:"The system relies on these settings for proper functioning or enabling optional features.",
     name: "system_settings",
@@ -144,22 +132,18 @@ export const system_schemas = {
         name: {
           type: "string",
           minLength: 5,
-          maxLength: 250,
+          maxLength: 1000,
           pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
         },
         value: {
-          type: "string",
-          minLength: 5,
-          maxLength: 5000,
-          pattern: "^[^\n\r]*$",
-          description:"Must be a single line string"
+          type: ["string", "number", "boolean", "array"] 
         },
-        user_editable: {
-          type: "boolean",
-          default: true,
-          description:
-            "Whether this setting is editable by the user or only by the system",
-        },
+        on_update_array:{
+          type:"string",
+          default:"replace",
+          description:"Special operation only for updating Arrays. Either replace it or append new elements to it. Cannot be edited",
+          enum:["replace","append"],
+        }
       },
     },
     settings: {

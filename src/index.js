@@ -1,9 +1,12 @@
 import * as sys_sch from "./system_schema.js";
-// import { version } from "../package.json" assert {type :"json"};
 /**
  * This the core class. it is not very useful in itself but can be used to generate a sub class for a specific database for eg CouchDB.
  * It takes a db_instance argument, which , this class relies on perform  CRUD operations on the data.
  * Why have a "dumb" class ? : So that the core functionalities remains in a single place and the multiple Databases can be supported.
+ * Naming convention :  
+ * - user facing methods : verbs with underscores, no camel case 
+ * - internal methods (uses the this object) only to be used within the class : name starts with underscore (_)
+ * - util methods : these can also be used by the user,  this object not accessed, : name starts with util_
  */
 class BeanBagDB {
   /**
@@ -16,117 +19,196 @@ class BeanBagDB {
    */
   constructor(db_instance) {
     // data validation checks
-    this._check_required_fields(["name", "encryption_key", "api", "utils"],db_instance)
-    this._check_required_fields(["insert", "update", "delete", "search","get","createIndex"],db_instance.api)
-    this._check_required_fields(["encrypt", "decrypt","ping","validate_schema"],db_instance.utils)
+    this.util_check_required_fields(["name", "encryption_key", "api", "utils","db_name"],db_instance)
+    this.util_check_required_fields(["insert", "update", "delete", "search","get","createIndex"],db_instance.api)
+    this.util_check_required_fields(["encrypt", "decrypt","ping","validate_schema"],db_instance.utils)
 
-    if(db_instance.encryption_key.length>20){throw new Error("encryption_key must have at least 20 letters")}
+    if(db_instance.encryption_key.length<20){throw new Error("encryption_key must have at least 20 letters")}
     // db name should not be blank, 
 
-    this.name = db_instance.name;
     this.encryption_key = db_instance.encryption_key;
-
+    this.db_name = db_instance.db_name // couchdb,pouchdb etc...
     this.db_api = db_instance.api;
     this.utils = db_instance.utils;
 
-    this._version = "0.5.0"
-    this.ready_check = { initialized: false, latest: false };
-    console.log("Run ready() now");
+    this.meta = {
+      database_name : db_instance.name,
+      backend_database : this.db_name,
+      beanbagdb_version_db : null
+    }
+    
+    this._version = this._get_current_version()
+    // latest indicated if the DB was initialized with the latest version or not. 
+    this.active =  false 
 
+    console.log("Run ready() now");
+    
     this.plugins = {}
+    
+    this.error_codes = {
+      not_active : "Database is not ready. Run ready() first",
+      schema_not_found:"Schema not found"
+    } 
+  }
+
+  async metadata(){
+    // returns system data 
+    return {
+      ... this.meta,
+      beanbagdb_version_code : this._version,
+      ready_to_use : this.active 
+    }
+    // todo : doc count, schema count, records for each schema, size of the database, 
   }
 
   /**
    * This is to check if the database is ready to be used. It it important to run this after the class is initialized.
    */
   async ready() {
-    console.log("Checking...");
-    // @TODO : ping the database
-    // this._version = await getPackageVersion()
-    this.ready_check = await this._check_ready_to_use();
-    if (this.ready_check.initialized) {
-      console.log("Ready to use!");
+    // TODO Ping db
+    let check = { initialized: false, latest: false ,db_version:null};
+    let version_search = await this.db_api.search({
+      selector: { schema: "system_settings", "data.name": "beanbagdb_version" },
+    });
+    if (version_search.docs.length > 0) {
+      let doc = version_search.docs[0];
+      this.active  = doc["data"]["value"] == this._version;
+      this.meta.beanbagdb_version_db = doc["data"]["value"]
+    }
+    if(this.active){
+      console.log("Ready")
+    }else{
+      await this.initialize_db()
     }
   }
 
-  check_if_ready(){
-    return this.ready_check.ready 
-  }
+
 
   /**
    * Initializes the database making it ready to be used. Typically, required to run after every time package is updated to a new version.
    * See the documentation on the architecture of the DB to understand what default schemas are required for a smooth functioning of the database
    */
   async initialize_db() {
+    // this works on its own but is usually called by ready automatically if required 
+
+    // check for schema_scehma : if yes, check if latest and upgrade if required, if no create a new schema doc
+    let logs = ["init started"]
     try {
-      if (this.ready_check.initialized == false) {
-        // add the   meta-schemas doc
+      let schema = await  this.get_schema_doc("schema")
+      if (schema["data"]["version"] != sys_sch.schema_schema.version){
+        logs.push("old schema_schema v "+schema["data"]["version"])
+        let full_doc  = await this.db_api.get(schema["_id"])
+        full_doc["data"] =  {...sys_sch.schema_schema}
+        full_doc["meta"]["updated_on"] = this._get_now_unix_timestamp()
+        await this.db_api.update(full_doc)
+        logs.push("new schema_schema v "+sys_sch.schema_schema.version)
+      }
+
+    } catch (error) {
+     console.log(error)
+     if (error.message==this.error_codes.schema_not_found) {
+      console.log("...adding new ")
+        // inserting new schema_schema doc
         let schema_schema_doc = this._get_blank_doc("schema");
         schema_schema_doc.data = sys_sch.schema_schema;
         await this.db_api.insert(schema_schema_doc);
-        // add system schemas
-        let keys = Object.keys(sys_sch.system_schemas);
-        for (let index = 0; index < keys.length; index++) {
-          const element = sys_sch.system_schemas[keys[index]];
-          let schema_record = this._get_blank_schema_doc(
-            "schema",
-            sys_sch.schema_schema["schema"],
-            element
-          );
-          await this.db_api.insert(schema_record);
+        logs.push("init schema_schema v "+sys_sch.schema_schema.version)
+     }
+    }
+
+    let keys = Object.keys(sys_sch.system_schemas);
+    for (let index = 0; index < keys.length; index++) {
+      const schema_name = sys_sch.system_schemas[keys[index]]["name"] 
+      const schema_data = sys_sch.system_schemas[keys[index]];
+      try {
+        // console.log(schema_name)
+        let schema1 = await  this.get_schema_doc(schema_name)
+        if (schema1["data"]["version"] != schema_data.version){
+          logs.push("old "+schema_name+" v "+schema1["data"]["version"])
+          let full_doc  = await this.db_api.get(schema1["_id"])
+          full_doc["data"] =  {...schema_data}
+          full_doc["meta"]["updated_on"] = this._get_now_unix_timestamp()
+          await this.db_api.update(full_doc)
+          logs.push("new "+schema_name+" v "+schema_data.version)
         }
-        // create an index
-        await this.db_api.createIndex({
-          index: { fields: ["schema", "data", "meta"] },
-        });
-        console.log("Database Indexed.");
-        // create the log doc
-        const log_schema = sys_sch.system_schemas["logs"]["schema"];
-        let log_doc = this._get_blank_schema_doc("system_logs", log_schema, {
-          logs: [
-            {
-              message: `Database is initialized with version ${this._version}.`,
-              on: this._get_now_unix_timestamp(),
-              human_date: new Date().toLocaleString(),
-            },
-          ],
-        });
-        await this.db_api.insert(log_doc);
-        // create the setting doc
-        const setting_schema = sys_sch.system_schemas["settings"]["schema"];
-        let setting_doc = this._get_blank_schema_doc(
-          "system_settings",
-          setting_schema,
-          {
-            name: "beanbagdb_version",
-            value: this._version,
-            user_editable: false,
-          }
-        );
-        await this.db_api.insert(setting_doc);
-        // finally update the flags
-        this.ready_check.initialized = true;
-        this.ready_check.latest = true;
-        console.log("Database initialized");
-      } else {
-        console.log("Database already initialized");
-        if (!this.ready_check.latest) {
-          // update to latest schema
-          this._update_system_schema();
-        } else {
-          console.log("Database already up to date");
+      } catch (error) {
+        console.log(error)
+        if (error.message==this.error_codes.schema_not_found) {
+          // inserting new schema doc
+          let new_schema_doc = this._get_blank_schema_doc("schema",sys_sch.schema_schema["schema"],schema_data);
+          await this.db_api.insert(new_schema_doc);
+          logs.push("init "+schema_name+" v "+schema_data.version)
         }
       }
-    } catch (error) {
-      console.log(error);
-      throw error;
+    }
+    // store the logs in the log_doc ,  generate it for the first time 
+    // console.log(logs)
+    if(logs.length>1){
+      // version needs to be updated in the object as well as settings and must be logged
+      logs.push("Init done")
+      
+      await this.insert_or_update_setting("system_logs",{value:{text:logs.join(","),added:this._get_now_unix_timestamp()},"on_update_array":"append"})
+      await this.insert_or_update_setting("beanbagdb_version",{value:this._version})
+      // await this.insert_or_update_setting("system_logs",{value:{text:"This is just a test.",added:this._get_now_unix_timestamp()}})
+
+      this.meta.beanbagdb_version_db = this._version
+      this.active = true
+    }else{
+      // no new updates were done 
+      console.log("already updated. nothing is required to be done. continue")
     }
   }
+  async insert_or_update_setting(name,new_data,schema={}){
+    // TODO implement schema check
+    if(!new_data){throw new Error("No data provided")}
+    if(!new_data.value){throw new Error("No value provided")}
+
+    let doc_search = await this.db_api.search({"selector":{"schema":"system_settings","data.name":name}})
+    if(doc_search.docs.length>0){
+      // doc already exists, check schema and update it : if it exists then it's value already exists and can be 
+      let doc = {...doc_search.docs[0]}
+      if(Array.isArray(doc.data.value)){
+          let append_type = doc.data.on_update_array
+          if(append_type=="append"){
+            doc["data"]["value"].push(new_data.value)
+          }else if(append_type=="update"){
+            doc["data"]["value"] = new_data.value
+          }else{
+            throw new Error("Invalid on update array value")
+          }
+        }else{
+          doc["data"]["value"]  = new_data.value
+        }
+        // finally update it 
+        doc["meta"]["updated_on"] = this._get_now_unix_timestamp()
+        await this.db_api.update(doc)
+        return doc
+      
+    }else{
+      // doc does not exists, generate a new one 
+      let new_val= {value:new_data.value}
+
+      if (new_data.on_update_array){
+        // this indicates the provided value is initial value inside the array
+        new_val.value = [new_data.value]
+        new_val.on_update_array = new_data.on_update_array
+      }
+      let new_doc = this._get_blank_doc("system_settings")
+      new_doc["data"] = {
+        "name": name,
+        ...new_val
+      }
+      let d = await this.db_api.insert(new_doc)
+      return d
+    }
+  }
+
 
   /**
    * Adds indexes for all the schemas in the data base. This is important to make search faster. This must be done every time a new schema is introduced in the database
    */
   async update_indexes() {
+    this._check_ready_to_use()
     // @TODO check this. i don't the index created this way are actually useful in search.
     let all_schemas_docs = await this.db_api.search({
       selector: { schema: "schema" },
@@ -198,9 +280,10 @@ class BeanBagDB {
    * @returns {Object} {doc} or {doc,schema}
    */
   async get(doc_id,include_schema=false) {
+    this._check_ready_to_use()
     let doc = await this.db_api.get(doc_id);
     let schema = await this.get_schema_doc(doc.schema);
-    doc = this._decrypt_doc(schema, doc);
+    doc = this._decrypt_doc(schema["data"], doc);
     if(include_schema){
       return {doc,schema}
     }
@@ -215,10 +298,11 @@ class BeanBagDB {
     let schemaSearch = await this.db_api.search({
       selector: { schema: "schema", "data.name": schema_name },
     });
+    // console.log(schemaSearch)
     if (schemaSearch.docs.length == 0) {
-      throw new Error("Schema not found");
+      throw new Error(this.error_codes.schema_not_found);
     }
-    return schemaSearch.docs[0]["data"];
+    return schemaSearch.docs[0];
   }
 
   /**
@@ -230,7 +314,9 @@ class BeanBagDB {
    * @returns object
    */
   async get_doc(schema_name, primary_key = {}) {
-    let s_doc = await this.get_schema_doc(schema_name);
+    this._check_ready_to_use()
+    let schema_doc = await this.get_schema_doc(schema_name);
+    let s_doc = schema_doc["data"];
     let doc_obj;
     if (
       s_doc["settings"]["primary_keys"] &&
@@ -268,6 +354,7 @@ class BeanBagDB {
    * @param {Object} criteria
    */
   async search(criteria) {
+    this._check_ready_to_use()
     if (!criteria["selector"]) {
       throw new Error("Invalid search query.");
     }
@@ -285,6 +372,7 @@ class BeanBagDB {
    * @param {Object} settings (optional)
    */
   async insert(schema, data, meta= {},settings = {}) {
+    this._check_ready_to_use()
     try {
       let doc_obj = await this._insert_pre_checks(schema, data, settings);
       let new_rec = await this.db_api.insert(doc_obj);
@@ -315,10 +403,11 @@ class BeanBagDB {
    * 
    */
   async update(doc_id, rev_id, updates, update_source="api",save_conflict = true) {
+    this._check_ready_to_use()
     // making a big assumption here : primary key fields cannot be edited
     // so updating the doc will not generate primary key conflicts
     let req_data = await this.get(doc_id,true);
-    let schema = req_data.schema // await this.get_schema_doc(schema_name);
+    let schema = req_data.schema 
     let full_doc = req_data.doc // await this.get(doc_id)["doc"];
 
     // @TODO fix this : what to do if the rev id does not match 
@@ -384,11 +473,13 @@ class BeanBagDB {
   }
 
   async delete(doc_id) {
+    this._check_ready_to_use()
     await this.db_api.delete(doc_id)
   }
 
 
   async load_plugin(plugin_name,plugin_module){
+    this._check_ready_to_use()
     this.plugins[plugin_name] = {}
     for (let func_name in plugin_module){
       if(typeof plugin_module[func_name]=='function'){
@@ -401,18 +492,33 @@ class BeanBagDB {
     }
   }
 
-  //////// Helper method ////////
+  //////// Internal methods ////////
+
+  _get_current_version(){
+    // current version is the sum of versions of all system defined schemas 
+    let sum = sys_sch.schema_schema.version
+    let keys = Object.keys(sys_sch.system_schemas).map(item=>{
+      sum = sum+  sys_sch.system_schemas[item].version
+    })
+    if(sum == NaN){
+      throw Error("Error in system schema version numbers")
+    }
+    return sum 
+  }
+
+  _check_ready_to_use(){
+    if(!this.active){
+      throw new Error(this.error_codes.not_active)
+    }
+  }
+
 
   _generate_random_link(){
     const dictionary = ['rain', 'mars', 'banana', 'earth', 'kiwi', 'mercury', 'fuji', 'hurricane', 'matterhorn', 'snow', 'saturn', 'jupiter', 'peach', 'wind', 'pluto', 'apple', 'k2', 'storm', 'venus', 'denali', 'cloud', 'sunshine', 'mango', 'drizzle', 'pineapple', 'aconcagua', 'gasherbrum', 'apricot', 'neptune', 'fog', 'orange', 'blueberry', 'kilimanjaro', 'uranus', 'grape', 'storm', 'montblanc', 'lemon', 'chooyu', 'raspberry', 'cherry', 'thunder', 'vinson', 'breeze', 'elbrus', 'everest', 'parbat', 'makalu', 'nanga', 'kangchenjunga', 'lightning', 'cyclone', 'comet', 'asteroid', 'pomegranate', 'nectarine', 'clementine', 'strawberry', 'tornado', 'avalanche', 'andes', 'rockies', 'himalayas', 'pyrenees', 'carpathians', 'cascade', 'etna', 'vesuvius', 'volcano', 'tundra', 'whirlwind', 'iceberg', 'eclipse', 'zephyr', 'tropic', 'monsoon', 'aurora'];
     return Array.from({ length: 4 }, () => dictionary[Math.floor(Math.random() * dictionary.length)]).join('-');
   }
 
-  _check_required_fields(requiredFields,obj){
-    for (const field of requiredFields) {
-      if (!obj[field]) {throw new Error(`${field} is required`);}
-    }
-  }
+  
 
   /**
    * 
@@ -429,36 +535,7 @@ class BeanBagDB {
     }, {});
   }
 
-  /**
-   * Checks if the selected database is initialized for working with BeanBagDB. Also throws a warning if package version does not match with database version.
-   * Every time a database is initialized, a setting document `beanbagdb_version` is added. If this does not exists, the database is not initialized. If it exists but does not match the current version, a warning is shown.
-   * @returns {object} {initialized:boolean,latest:boolean}
-   */
-  async _check_ready_to_use() {
-    // @TODO check if ready to use in major API methods
-    let check = { initialized: false, latest: false };
-    // @TODO this is not really fool proof. check all the required docs, they have the system_generated flag
-    // what if some user mistakenly modifies or deletes some of the required docs ?
-    let version_search = await this.db_api.search({
-      selector: { schema: "system_settings", "data.name": "beanbagdb_version" },
-    });
-    if (version_search.docs.length > 0) {
-      let doc = version_search.docs[0];
-      check.initialized = true;
-      check.latest = doc["data"]["value"] == this._version;
-    }
-    if (check.initialized == false) {
-      console.warn(
-        "This database is not ready to be used. It is not initialized. Run `initialize_db()` first"
-      );
-    }
-    if ((check.latest == false) & (check.initialized == true)) {
-      console.warn(
-        "This database is not updated with the latest version. Run `initialize_db()` again to update to the latest version"
-      );
-    }
-    return check;
-  }
+
 
   /**
    * To update the system schema or reset to a stable version to ensure functioning of the BeanBagDB
@@ -488,7 +565,7 @@ class BeanBagDB {
     let doc = {
       data: {},
       meta: {
-        createdOn: this._get_now_unix_timestamp(),
+        created_on: this._get_now_unix_timestamp(),
         tags: [],
         app :{},
         link : this._generate_random_link() // there is a link by default. overwrite this if user provided one but only before checking if it is unique
@@ -628,6 +705,13 @@ class BeanBagDB {
     let doc_obj = this._get_blank_doc(schema);
     doc_obj["data"] = new_data;
     return doc_obj;
+  }
+
+  ////// Utility methods 
+  util_check_required_fields(requiredFields,obj){
+    for (const field of requiredFields) {
+      if (!obj[field]) {throw new Error(`${field} is required`);}
+    }
   }
 }
 

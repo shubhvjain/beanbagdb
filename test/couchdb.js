@@ -10,6 +10,7 @@ export class BeanBagDB_CouchDB extends BeanBagDB {
     //const cdb = import("nano")(db_url)
     const cdb = nano(db_url)
     const doc_obj = {
+      db_name:"couchdb",
       name: db_name,
       encryption_key: encryption_key,
       api:{
