@@ -1,6 +1,6 @@
 {
   "name": "beanbagdb",
-  "version": "0.5.50",
+  "version": "0.5.51",
   "description": "A JS library to introduce a schema layer to a No-SQL local database",
   "main": "src/index.js",
   "module": "src/index.js",
@@ -34,5 +34,8 @@
     "nano": "^10.1.4",
     "pouchdb": "^9.0.0",
     "pouchdb-find": "^9.0.0"
+  },
+  "mocha": {
+    "spec": "test/**/*.test.js"
   }
 }

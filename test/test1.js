@@ -158,21 +158,29 @@
 
 import { get_pdb_doc } from './pouchdb.js';
 import { throws, strictEqual } from "assert";
-import BeanBagDB  from '../src/index.js';
+import {BeanBagDB}  from '../src/index.js';
 
 (async()=>{
+
   let schema_docs_invalid = [
     {
-     "name":"",
-     "description":"",
-     "schema":{},
-     "settings":{} 
+      name: "contact",
+      description: "This can be left blank",
+      schema: {
+        "type":"object",
+        "properties":{"name":{"type":"string"},"address":{type:"object"},"secret":{"type":"string"}},
+        "additionalProperties":true
+      },
+      settings: {
+        primary_keys:["name"],
+        non_editable_fields:["address"],
+        single_record:false,
+        encrypted_fields:["name"]
+      },
     }
-    
     ]
   let doc_obj = get_pdb_doc("test_database_26","qwertyuiopaqwsde1254")
   let database = new BeanBagDB(doc_obj);
-  database.initialize_db()
-  database.ready()
+  await database.ready()
   let a = await database.insert("schema",schema_docs_invalid[0])
 })()
