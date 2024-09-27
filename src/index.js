@@ -8,7 +8,7 @@ import * as sys_sch from "./system_schema.js";
  * - internal methods (uses the this object) only to be used within the class : name starts with underscore (_)
  * - util methods : these can also be used by the user,  this object not accessed, : name starts with util_
  */
-class BeanBagDB {
+export class BeanBagDB {
   /**
    * @param {object} db_instance - Database object
    * db_instance object contains 3 main keys :
@@ -235,41 +235,74 @@ class BeanBagDB {
     //const validate = ajv.compile(schema_obj);
     //const valid = validate(data_obj);
     if (!valid) {
-      console.log(validate.errors);
-      throw new Error(validate.errors);
+      throw new ValidationError(validate.errors);
     }
   }
 
   validate_schema_object(schema_doc){
-    let errors = []
+    let errors = [{"message":"Schema validation errors "}]
     if(!schema_doc["schema"]["type"]){
-      errors.push("Schema must have the field schema.'type' which can only be 'object' ")
+      errors.push({message:"Schema must have the field schema.'type' which can only be 'object' "})
     }else{
       if(schema_doc["schema"]["type"]!="object"){
-        errors.push("The schema.'type' value  is invalid.Only 'object' allowed")
+        errors.push({message:"The schema.'type' value  is invalid.Only 'object' allowed"})
       }
     }
     if(!schema_doc["schema"]["properties"]){
-      errors.push("The schema.'properties' object does not exists")
+      errors.push({message:"The schema.'properties' object does not exists"})
     }else{
       if(typeof(schema_doc["schema"]["properties"])!="object"){
-        errors.push("Invalid schema.properties. It must be an object and must have atleast one field inside.")
+        errors.push({message:"Invalid schema.properties. It must be an object and must have atleast one field inside."})
       }
       if(Object.keys(schema_doc["schema"]["properties"]).length==0){
-        errors.push("You must define at least one property")
+        errors.push({message:"You must define at least one property"})
       }
     }
 
     if(!schema_doc["schema"]["additionalProperties"]){
-      errors.push("The schema.'additionalProperties' field is required")
+      errors.push({message:"The schema.'additionalProperties' field is required"})
     }else{
       if(typeof(schema_doc["schema"]["additionalProperties"])!="boolean"){
-        errors.push("Invalid schema.additionalProperties. It must be a boolean value")
+        errors.push({message:"Invalid schema.additionalProperties. It must be a boolean value"})
       }
     }
 
-    if(errors.length>0){
-      throw new Error("Schema validation errors- "+errors.join(","))
+    const allKeys = Object.keys(schema_doc["schema"]["properties"])
+    if(schema_doc["settings"]["primary_keys"].length>0){
+      // check if all keys belong to the schema and are not of type object
+      let all_pk_exist = schema_doc["settings"]["primary_keys"].every(item=>allKeys.includes(item)&&schema_doc["schema"]["properties"][item]["type"]!="object"&&schema_doc["schema"]["properties"][item]["type"]!="array")
+      
+      if(!all_pk_exist){
+        errors.push({message:"Primary keys invalid. All keys must be defined in the schema and must be non object"})
+      }
+    }
+
+
+    if(schema_doc["settings"]["non_editable_fields"].length>0){
+      // check if all keys belong to the schema
+      let all_ne_exist = schema_doc["settings"]["non_editable_fields"].every(item=>allKeys.includes(item))
+      if(!all_ne_exist){
+        errors.push({message:"Non editable fields invalid. All fields must be defined in the schema "})
+      }
+    }
+
+    if(schema_doc["settings"]["encrypted_fields"].length>0){
+      // check if all keys belong to the schema and are only string
+      let all_enc_exist = schema_doc["settings"]["encrypted_fields"].every(item=>allKeys.includes(item)&&schema_doc["schema"]["properties"][item]["type"]=="string")
+      if(!all_enc_exist){
+        errors.push({message:"Invalid encrypted fields. All fields must be defined in the schema and must be string "})
+      }
+
+      // check : primary keys cannot be encrypted
+      let all_enc_no_pk = schema_doc["settings"]["encrypted_fields"].every(item=>!schema_doc["settings"]["primary_keys"].includes(item))
+      if(!all_enc_no_pk){
+        errors.push({message:"Invalid encrypted fields.Primary key fields cannot be encrypted "})
+      }
+    }
+  
+    /// cannot encrypt primary field keys 
+    if(errors.length>1){
+      throw new ValidationError(errors)
     }
   }
 
@@ -372,13 +405,14 @@ class BeanBagDB {
    * @param {Object} settings (optional)
    */
   async insert(schema, data, meta= {},settings = {}) {
+    //console.log("here in insert")
     this._check_ready_to_use()
     try {
       let doc_obj = await this._insert_pre_checks(schema, data, settings);
       let new_rec = await this.db_api.insert(doc_obj);
       return { id: new_rec["id"] };
     } catch (error) {
-      console.log(error);
+      // console.log(error);
       throw error;
     }
   }
@@ -418,43 +452,37 @@ class BeanBagDB {
     //   }
     // }
 
-    // blank check
-
     // update new value depending on settings.editable_fields (if does not exists, all fields are editable)
-    let edit_fields = Object.keys(schema.schema.properties)
-    if(schema.settings["editable_fields"]&&schema.settings["editable_fields"].length>0){
-      edit_fields = schema.settings["editable_fields"]
-    }
+    let all_fields = Object.keys(schema.schema.properties)
+    let unedit_fields = schema.settings["non_editable_fields"]
+    let edit_fields = all_fields.filter(item=>!unedit_fields.includes(item))
 
     // now generate the new doc with updates 
     let allowed_updates = this._filterObject(updates.data,edit_fields);
     let updated_data = { ...full_doc.data, ...allowed_updates };
 
-    // validate data
     this.validate_data(schema.schema, updated_data);
 
     // primary key check if multiple records can  be created 
-    if(schema.settings["single_record"]==false){
-      if(schema.settings["primary_keys"]&&schema.settings["primary_keys"].length>0){
-        let pri_fields = schema.settings["primary_keys"]
-        let search_criteria = {schema:schema.name}
-        pri_fields.map(itm=>{search_criteria["data."+itm] = updated_data[itm]})
-        let search = await this.search({selection:search_criteria})
-        if(search.docs.length>0){
-          if(search.docs.length==1){
-            let thedoc  = search.docs[0]
-            if(thedoc["_id"]!=doc_id){
-              throw new Error("Update not allowed. Document with the same primary key already exists")
-            }
-          }else{
-            throw new Error("There is something wrong with the schema")
+    if(schema.settings["single_record"]==false && schema.settings["primary_keys"].length>0){
+      let pri_fields = schema.settings["primary_keys"]
+      let search_criteria = {schema:schema.name}
+      pri_fields.map(itm=>{search_criteria["data."+itm] = updated_data[itm]})
+      let search = await this.search({selection:search_criteria})
+      if(search.docs.length>0){
+        if(search.docs.length==1){
+          let thedoc  = search.docs[0]
+          if(thedoc["_id"]!=doc_id){
+            throw new DocUpdateError([{message:"Update not allowed. Document with the same primary key already exists"}])
           }
         }
-      }
+        else{
+          throw new Error("There is something wrong with the schema primary keys")
+        }
+      } 
     }
 
     // encrypt the data  
-
     full_doc["data"] = updated_data
     full_doc = this._encrypt_doc(schema,full_doc);
     
@@ -715,4 +743,45 @@ class BeanBagDB {
   }
 }
 
-export default BeanBagDB;
+
+export class ValidationError extends Error {
+  constructor(errors = []) {
+    // Create a message based on the list of errors
+    //console.log(errors)
+    let error_messages = errors.map(item=>` ${(item.instancePath||" ").replace("/","")} ${item.message} `)
+    let message = `Validation failed with ${errors.length} error(s): ${error_messages.join(",")}`;
+    super(message);
+    this.name = 'ValidationError';
+    this.errors = errors;  // Store the list of errors
+  }
+}
+
+export class DocUpdateError extends Error {
+  constructor(errors=[]){
+    let error_messages  = errors.map(item=>`${item.message}`)
+    let message = `Error in document update. ${error_messages.join(",")}`
+    super(message)
+    this.name = "DocUpdateError";
+    this.errors = errors
+  }
+}
+
+export class DocInsertError extends Error {
+  constructor(errors=[]){
+    let error_messages  = errors.map(item=>`${item.message}`)
+    let message = `Error in document insert. ${error_messages.join(",")}`
+    super(message)
+    this.name = "DocInsertError";
+    this.errors = errors
+  }
+}
+
+export class DocNotFoundError extends Error {
+  constructor(errors=[]){
+    let error_messages  = errors.map(item=>`${item.message}`)
+    let message = `Error in fetching document. Criteria : ${error_messages.join(",")}`
+    super(message)
+    this.name = "DocNotFoundError";
+    this.errors = errors
+  }
+}

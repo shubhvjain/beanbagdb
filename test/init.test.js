@@ -1,7 +1,7 @@
 // to test initialization of the BeanBagDB class 
 import { get_pdb_doc } from './pouchdb.js';
 import { throws, strictEqual } from "assert";
-import BeanBagDB  from '../src/index.js';
+import {BeanBagDB}  from '../src/index.js';
 
 /**
  * Initial setup

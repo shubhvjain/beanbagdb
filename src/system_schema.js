@@ -48,14 +48,17 @@ export const schema_schema = {
               type: "string",
             },
             maxItems: 10,
+            description:"Fields that makes each document unique in the schema.Leave it blank if you do not need it. You can still be able to distinguish documents using the link field and the document id."
           },
-          editable_fields: {
+          non_editable_fields: {
             type: "array",
             default: [],
             items: {
               type: "string",
             },
             maxItems: 50,
+            minItems:0,
+            description:"The list of fields whose values are added when the document is created but cannot be edited later in future."
           },
           encrypted_fields: {
             type: "array",
@@ -64,6 +67,7 @@ export const schema_schema = {
               type: "string",
             },
             maxItems: 50,
+            description:"Once set, all the data in this field will be encrypted before storing it in the database. Encryption key must be provided during the time of BeanBagDB initialization and must be managed by the user as it is NOT stored in the database"
           },
           single_record: {
             type: "boolean",
@@ -72,6 +76,7 @@ export const schema_schema = {
               "If set, only a single records with this schema will be allowed to insert in the database",
           },
         },
+        required :["primary_keys","non_editable_fields","single_record","encrypted_fields"]
       },
     },
     required: ["name","description","schema", "settings"],
@@ -116,7 +121,9 @@ export const system_schemas = {
     },
     settings: {
       primary_keys: ["name"],
-      encrypted_fields:["value"]
+      encrypted_fields:["value"],
+      non_editable_fields:[],
+      single_record: false
     },
   },
   settings: {
@@ -148,7 +155,9 @@ export const system_schemas = {
     },
     settings: {
       primary_keys: ["name"],
-      editable_fields: ["value"],
+      non_editable_fields: ["name"],
+      encrypted_fields:[],
+      single_record:false
     },
   },
 };
