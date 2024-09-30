@@ -6,7 +6,8 @@
   "module": "src/index.js",
   "type": "module",
   "scripts": {
-    "test": "mocha"
+    "test": "mocha",
+    "docgen": "npx jsdoc -c jsdoc.json"
   },
   "repository": {
     "type": "git",

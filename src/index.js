@@ -1,55 +1,65 @@
 import * as sys_sch from "./system_schema.js";
 /**
- * This the core class. it is not very useful in itself but can be used to generate a sub class for a specific database for eg CouchDB.
- * It takes a db_instance argument, which , this class relies on perform  CRUD operations on the data.
- * Why have a "dumb" class ? : So that the core functionalities remains in a single place and the multiple Databases can be supported.
- * Naming convention :  
- * - user facing methods : verbs with underscores, no camel case 
- * - internal methods (uses the this object) only to be used within the class : name starts with underscore (_)
- * - util methods : these can also be used by the user,  this object not accessed, : name starts with util_
+ * The core BeanBagDB class abstracts the database logic making it adaptable to both frontend and backend application. It is designed to be independent of any specific database allowing for integration with many databases. 
+ * 
+ * **Initialization** : Upon initializing the `BeanBagDB` object, the user must pass a JSON object with essential parameters such as the encryption key. Access to the database is provided through the  "api" object which should include asynchronous methods that handle basic CRUD operations and other utility functions. 
+ * 
+ * This class can serve a foundation for building database specific `BeanBagDb` classes. 
+ * 
+ * **Method types**
+ * `BeanBagDB` contains 3 types of methods, all following the `snake_case` naming convention (lowercase letters separated by underscores)
+ * - User facing methods  : These methods allow the user to define new schemas and perform CRUD operations on the database based on these schemas.
+ * - Utility methods : These methods don't interact with the database directly. They typically serve a specific purpose like returning the current UTC timestamp.These methods are prefixed with `util_`. 
+ * - Internal methods : Designed for use within the class, these methods are not intended for external access. Their names are prefixed with an underscore. 
+ * 
  */
 export class BeanBagDB {
   /**
-   * @param {object} db_instance - Database object
-   * db_instance object contains 3 main keys :
-   * - `name` : the name of the local database
-   * - `encryption_key`: this is required for encrypting documents
-   * - `api` : this is an object that must contain database specific functions. This includes :  `insert(doc)`: takes a doc and runs the db insertion function,  `update(updated_doc)` : gets the updated document and updates it in the DB,  `search(query)`: takes a query to fetch data from the DB (assuming array of JSON is returned ), `get(id)`: takes a document id and returns its content, `createIndex(filter)`: to create an index in the database based on a  filter
-   * - `utils` : this includes `encrypt`, `decrypt`
-   */
+  * Initializes the BeanBagDB instance.
+  * 
+  * @param {object} db_instance - Database configuration object.
+  * @param {string} db_instance.name - The name of the local database.
+  * @param {string} db_instance.encryption_key - A key for encrypting documents (minimum 20 characters).
+  * @param {object} db_instance.api - The API object containing database-specific CRUD operations.
+  * @param {function} db_instance.api.insert - Inserts a document into the database.
+  * @param {function} db_instance.api.update - Updates an existing document in the database.
+  * @param {function} db_instance.api.delete - Deletes a document from the database.
+  * @param {function} db_instance.api.search - Searches for documents based on a query (returns an array of JSON).
+  * @param {function} db_instance.api.get - Retrieves a document by its ID.
+  * @param {function} db_instance.api.createIndex - Creates an index in the database based on a filter.
+  * @param {object} db_instance.utils - Utility functions for encryption and other operations.
+  * @param {function} db_instance.utils.encrypt - Encrypts a document.
+  * @param {function} db_instance.utils.decrypt - Decrypts a document.
+  * @param {function} db_instance.utils.ping - Checks the database connection.
+  * @param {function} db_instance.utils.validate_schema - Validates the database schema.
+  */
   constructor(db_instance) {
-    // data validation checks
     this.util_check_required_fields(["name", "encryption_key", "api", "utils","db_name"],db_instance)
     this.util_check_required_fields(["insert", "update", "delete", "search","get","createIndex"],db_instance.api)
     this.util_check_required_fields(["encrypt", "decrypt","ping","validate_schema"],db_instance.utils)
 
-    if(db_instance.encryption_key.length<20){throw new Error("encryption_key must have at least 20 letters")}
-    // db name should not be blank, 
+    if(db_instance.encryption_key.length<20){throw new ValidationError([{message:BeanBagDB.error_codes.key_short}])}
 
     this.encryption_key = db_instance.encryption_key;
     this.db_name = db_instance.db_name // couchdb,pouchdb etc...
     this.db_api = db_instance.api;
     this.utils = db_instance.utils;
-
     this.meta = {
       database_name : db_instance.name,
       backend_database : this.db_name,
       beanbagdb_version_db : null
     }
-    
     this._version = this._get_current_version()
-    // latest indicated if the DB was initialized with the latest version or not. 
     this.active =  false 
-
-    console.log("Run ready() now");
-    
     this.plugins = {}
-    
-    this.error_codes = {
-      not_active : "Database is not ready. Run ready() first",
-      schema_not_found:"Schema not found"
-    } 
+    console.log("Run ready() now");
   }
+
+  static error_codes = {
+    key_short:"The encryption key must at least contain 20 characters",
+    not_active: "Database is not ready. Run ready() first",
+    schema_not_found: "Schema not found"
+  };
 
   async metadata(){
     // returns system data 
@@ -94,7 +104,7 @@ export class BeanBagDB {
     // check for schema_scehma : if yes, check if latest and upgrade if required, if no create a new schema doc
     let logs = ["init started"]
     try {
-      let schema = await  this.get_schema_doc("schema")
+      let schema = await  this.get_schema("schema")
       if (schema["data"]["version"] != sys_sch.schema_schema.version){
         logs.push("old schema_schema v "+schema["data"]["version"])
         let full_doc  = await this.db_api.get(schema["_id"])
@@ -106,7 +116,7 @@ export class BeanBagDB {
 
     } catch (error) {
      console.log(error)
-     if (error.message==this.error_codes.schema_not_found) {
+     if (error.message==BeanBagDB.error_codes.schema_not_found) {
       console.log("...adding new ")
         // inserting new schema_schema doc
         let schema_schema_doc = this._get_blank_doc("schema");
@@ -122,7 +132,7 @@ export class BeanBagDB {
       const schema_data = sys_sch.system_schemas[keys[index]];
       try {
         // console.log(schema_name)
-        let schema1 = await  this.get_schema_doc(schema_name)
+        let schema1 = await  this.get_schema(schema_name)
         if (schema1["data"]["version"] != schema_data.version){
           logs.push("old "+schema_name+" v "+schema1["data"]["version"])
           let full_doc  = await this.db_api.get(schema1["_id"])
@@ -133,7 +143,7 @@ export class BeanBagDB {
         }
       } catch (error) {
         console.log(error)
-        if (error.message==this.error_codes.schema_not_found) {
+        if (error.message==BeanBagDB.error_codes.schema_not_found) {
           // inserting new schema doc
           let new_schema_doc = this._get_blank_schema_doc("schema",sys_sch.schema_schema["schema"],schema_data);
           await this.db_api.insert(new_schema_doc);
@@ -202,6 +212,14 @@ export class BeanBagDB {
       return d
     }
   }
+  // async get_setting(setting_name){
+  //   let doc_search = await this.db_api.search({"selector":{"schema":"system_settings","data.name":name}})
+  //   if(doc_search.docs.length>0){
+
+  //   }else{
+
+  //   } 
+  // }
 
 
   /**
@@ -315,7 +333,7 @@ export class BeanBagDB {
   async get(doc_id,include_schema=false) {
     this._check_ready_to_use()
     let doc = await this.db_api.get(doc_id);
-    let schema = await this.get_schema_doc(doc.schema);
+    let schema = await this.get_schema(doc.schema);
     doc = this._decrypt_doc(schema["data"], doc);
     if(include_schema){
       return {doc,schema}
@@ -327,13 +345,13 @@ export class BeanBagDB {
    * Returns schema document for the given schema name s
    * @param {String} schema_name - Schema name
    */
-  async get_schema_doc(schema_name) {
+  async get_schema(schema_name) {
     let schemaSearch = await this.db_api.search({
       selector: { schema: "schema", "data.name": schema_name },
     });
     // console.log(schemaSearch)
     if (schemaSearch.docs.length == 0) {
-      throw new Error(this.error_codes.schema_not_found);
+      throw new Error(BeanBagDB.error_codes.schema_not_found);
     }
     return schemaSearch.docs[0];
   }
@@ -348,7 +366,7 @@ export class BeanBagDB {
    */
   async get_doc(schema_name, primary_key = {}) {
     this._check_ready_to_use()
-    let schema_doc = await this.get_schema_doc(schema_name);
+    let schema_doc = await this.get_schema(schema_name);
     let s_doc = schema_doc["data"];
     let doc_obj;
     if (
@@ -405,14 +423,12 @@ export class BeanBagDB {
    * @param {Object} settings (optional)
    */
   async insert(schema, data, meta= {},settings = {}) {
-    //console.log("here in insert")
     this._check_ready_to_use()
     try {
       let doc_obj = await this._insert_pre_checks(schema, data, settings);
       let new_rec = await this.db_api.insert(doc_obj);
       return { id: new_rec["id"] };
     } catch (error) {
-      // console.log(error);
       throw error;
     }
   }
@@ -536,12 +552,13 @@ export class BeanBagDB {
 
   _check_ready_to_use(){
     if(!this.active){
-      throw new Error(this.error_codes.not_active)
+      throw new Error(BeanBagDB.error_codes.not_active)
     }
   }
 
 
   _generate_random_link(){
+    // prettier-ignore
     const dictionary = ['rain', 'mars', 'banana', 'earth', 'kiwi', 'mercury', 'fuji', 'hurricane', 'matterhorn', 'snow', 'saturn', 'jupiter', 'peach', 'wind', 'pluto', 'apple', 'k2', 'storm', 'venus', 'denali', 'cloud', 'sunshine', 'mango', 'drizzle', 'pineapple', 'aconcagua', 'gasherbrum', 'apricot', 'neptune', 'fog', 'orange', 'blueberry', 'kilimanjaro', 'uranus', 'grape', 'storm', 'montblanc', 'lemon', 'chooyu', 'raspberry', 'cherry', 'thunder', 'vinson', 'breeze', 'elbrus', 'everest', 'parbat', 'makalu', 'nanga', 'kangchenjunga', 'lightning', 'cyclone', 'comet', 'asteroid', 'pomegranate', 'nectarine', 'clementine', 'strawberry', 'tornado', 'avalanche', 'andes', 'rockies', 'himalayas', 'pyrenees', 'carpathians', 'cascade', 'etna', 'vesuvius', 'volcano', 'tundra', 'whirlwind', 'iceberg', 'eclipse', 'zephyr', 'tropic', 'monsoon', 'aurora'];
     return Array.from({ length: 4 }, () => dictionary[Math.floor(Math.random() * dictionary.length)]).join('-');
   }
@@ -735,16 +752,49 @@ export class BeanBagDB {
     return doc_obj;
   }
 
-  ////// Utility methods 
-  util_check_required_fields(requiredFields,obj){
+  ////////////////////////////////////////////////////////////////////////////////////////////////////
+  ////// Utility methods /////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Validates that the required fields are present in the provided object.
+ * 
+ * @param {string[]} requiredFields - An array of field names that are required.
+ * @param {object} obj - The object to check for the required fields.
+ * @throws {ValidationError} If any of the required fields are missing, an error is thrown.
+ */
+util_check_required_fields(requiredFields,obj){
     for (const field of requiredFields) {
-      if (!obj[field]) {throw new Error(`${field} is required`);}
+      if (!obj[field]) {throw new ValidationError([{message:`The field ${field} is required.`}])}
     }
-  }
 }
 
 
+
+
+}
+
+////////////////// Error classes ////////////////////////////////////////////////////
+
+/**
+ * This is common for all error classes 
+ * @typedef {Object} ErrorItem
+ * @property {string} [instancePath] - The path where the error occurred, optional. 
+ * @property {string} message - The error message.
+ */
+
+/**
+ * Custom error class for validation errors.
+ * 
+ * @extends {Error}
+ */
 export class ValidationError extends Error {
+ /**
+ * Custom error class for validation errors.
+ * 
+ * @extends {Error}
+ * @param {ErrorItem[]} [errors=[]] - An array of error objects, each containing details about validation failures.
+ */
   constructor(errors = []) {
     // Create a message based on the list of errors
     //console.log(errors)
@@ -756,7 +806,20 @@ export class ValidationError extends Error {
   }
 }
 
+
+
+/**
+ * Custom error class for document update errors.
+ * 
+ * @extends {Error}
+ */
 export class DocUpdateError extends Error {
+/**
+ * Custom error class for document update errors.
+ * 
+ * @extends {Error}
+ * @param {ErrorItem[]} [errors=[]] - An array of error objects, each containing details about validation failures.
+ */
   constructor(errors=[]){
     let error_messages  = errors.map(item=>`${item.message}`)
     let message = `Error in document update. ${error_messages.join(",")}`
@@ -766,7 +829,18 @@ export class DocUpdateError extends Error {
   }
 }
 
+/**
+ * Custom error class for document insert errors.
+ * 
+ * @extends {Error}
+ */
 export class DocInsertError extends Error {
+  /**
+ * Custom error class for document insert errors.
+ * 
+ * @extends {Error}
+ * @param {ErrorItem[]} [errors=[]] - An array of error objects, each containing details about validation failures.
+ */
   constructor(errors=[]){
     let error_messages  = errors.map(item=>`${item.message}`)
     let message = `Error in document insert. ${error_messages.join(",")}`
@@ -776,7 +850,18 @@ export class DocInsertError extends Error {
   }
 }
 
+/**
+ * Custom error class for document not found errors.
+ * 
+ * @extends {Error}
+ */
 export class DocNotFoundError extends Error {
+    /**
+ * Custom error class for document not found errors.
+ * 
+ * @extends {Error}
+ * @param {ErrorItem[]} [errors=[]] - An array of error objects, each containing details about validation failures.
+ */
   constructor(errors=[]){
     let error_messages  = errors.map(item=>`${item.message}`)
     let message = `Error in fetching document. Criteria : ${error_messages.join(",")}`
