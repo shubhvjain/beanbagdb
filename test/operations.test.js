@@ -316,7 +316,7 @@ describe("Schema doc insertion gives errors when", async () => {
     it(`${element[0]}`, async () => {
       await rejects(
         async () => {
-          await database.insert("schema", element[1]);
+          await database.create("schema", element[1]);
         },
         ValidationError
       );
