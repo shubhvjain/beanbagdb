@@ -164,23 +164,14 @@ import {BeanBagDB}  from '../src/index.js';
 
   let schema_docs_invalid = [
     {
-      name: "contact",
-      description: "This can be left blank",
-      schema: {
-        "type":"object",
-        "properties":{"name":{"type":"string"},"address":{type:"object"},"secret":{"type":"string"}},
-        "additionalProperties":true
-      },
-      settings: {
-        primary_keys:["name"],
-        non_editable_fields:["address"],
-        single_record:false,
-        encrypted_fields:["name"]
-      },
+      name: "",
+      description: "",
+      schema: {},
+      settings: {},
     }
     ]
   let doc_obj = get_pdb_doc("test_database_26","qwertyuiopaqwsde1254")
   let database = new BeanBagDB(doc_obj);
   await database.ready()
-  let a = await database.insert("schema",schema_docs_invalid[0])
+  let a = await database.create("schema",schema_docs_invalid[0])
 })()

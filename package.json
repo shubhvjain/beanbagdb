@@ -1,12 +1,13 @@
 {
   "name": "beanbagdb",
-  "version": "0.5.51",
+  "version": "0.5.52",
   "description": "A JS library to introduce a schema layer to a No-SQL local database",
   "main": "src/index.js",
   "module": "src/index.js",
   "type": "module",
   "scripts": {
-    "test": "mocha"
+    "test": "mocha",
+    "docgen": "npx jsdoc -c jsdoc.json"
   },
   "repository": {
     "type": "git",
