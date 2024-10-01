@@ -159,7 +159,7 @@ export const system_schemas = {
       encrypted_fields:[],
       single_record:false
     },
-  },
+  }
 };
 
 // this is not stored in the DB. only for validating the metadata during doc update
