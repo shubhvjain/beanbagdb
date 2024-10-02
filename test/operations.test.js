@@ -1,7 +1,7 @@
 // to test database operations. assuming the class is initialized successfully
 // to test initialization of the BeanBagDB class
 import { get_pdb_doc } from "./pouchdb.js";
-import { throws, strictEqual, rejects } from "assert";
+import assert, { throws, strictEqual, rejects } from "assert";
 import { BeanBagDB, DocCreationError, EncryptionError, ValidationError } from "../src/index.js";
 
 import * as chai from 'chai';
@@ -654,191 +654,194 @@ describe("Doc insertion tests", async () => {
   })
 })
 
-// describe("Doc insertion tests with encryption", async () => {
-//   const test_schema = {
-//     name:"book",
-//     description:"Test schema 1",
-//     schema: {
-//       $schema: "http://json-schema.org/draft-07/schema#",
-//       type: "object",
-//       properties: {
-//         title: {
-//           type: "string",
-//           minLength: 1,
-//           description: "The title of the book",
-//         },
-//         author: {
-//           type: "string",
-//           minLength: 1,
-//           description: "The author of the book",
-//         },
-//         isbn: {
-//           type: "string",
-//           pattern: "^(97(8|9))?\\d{9}(\\d|X)$",
-//           description: "The ISBN of the book, can be 10 or 13 digits",
-//         },
-//         publicationYear: {
-//           type: "integer",
-//           minimum: 1450,
-//           maximum: 2024,
-//           description:
-//             "The year the book was published (between 1450 and 2024)",
-//         },
-//         genre: {
-//           type: "string",
-//           enum: [
-//             "Fiction",
-//             "Non-Fiction",
-//             "Science",
-//             "History",
-//             "Fantasy",
-//             "Biography",
-//             "Children",
-//             "Mystery",
-//             "Horror",
-//           ],
-//           description: "The genre of the book",
-//         },
-//         language: {
-//           type: "string",
-//           description: "The language of the book",
-//           default: "English",
-//         },
-//         publisher: {
-//           type: "string",
-//           description: "The publisher of the book",
-//           minLength: 1,
-//         },
-//         pages: {
-//           type: "integer",
-//           minimum: 1,
-//           description: "The number of pages in the book",
-//         },
-//         secret: {
-//           type: "string",
-//           description: "Super secret related to the book",
-//           minLength: 1,
-//         },
-//       },
-//       required: ["title", "author", "isbn", "publicationYear", "genre"],
-//       additionalProperties: false,
-//     },
-//     settings : {
-//       primary_keys:['title','author'],
-//       encrypted_fields:['secret'],
-//       non_editable_fields:[],
-//       single_record:false
-//     }
-//   };
+describe("Doc insertion tests with encryption", async () => {
+  const test_schema = {
+    name:"book",
+    description:"Test schema 1",
+    schema: {
+      $schema: "http://json-schema.org/draft-07/schema#",
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          minLength: 1,
+          description: "The title of the book",
+        },
+        author: {
+          type: "string",
+          minLength: 1,
+          description: "The author of the book",
+        },
+        isbn: {
+          type: "string",
+          pattern: "^(97(8|9))?\\d{9}(\\d|X)$",
+          description: "The ISBN of the book, can be 10 or 13 digits",
+        },
+        publicationYear: {
+          type: "integer",
+          minimum: 1450,
+          maximum: 2024,
+          description:
+            "The year the book was published (between 1450 and 2024)",
+        },
+        genre: {
+          type: "string",
+          enum: [
+            "Fiction",
+            "Non-Fiction",
+            "Science",
+            "History",
+            "Fantasy",
+            "Biography",
+            "Children",
+            "Mystery",
+            "Horror",
+          ],
+          description: "The genre of the book",
+        },
+        language: {
+          type: "string",
+          description: "The language of the book",
+          default: "English",
+        },
+        publisher: {
+          type: "string",
+          description: "The publisher of the book",
+          minLength: 1,
+        },
+        pages: {
+          type: "integer",
+          minimum: 1,
+          description: "The number of pages in the book",
+        },
+        secret: {
+          type: "string",
+          description: "Super secret related to the book",
+          minLength: 1,
+        },
+      },
+      required: ["title", "author", "isbn", "publicationYear", "genre"],
+      additionalProperties: false,
+    },
+    settings : {
+      primary_keys:['title','author'],
+      encrypted_fields:['secret'],
+      non_editable_fields:[],
+      single_record:false
+    }
+  };
 
-//   before(async () => {
-//     // adding a schema
-//     let doc_obj_orig = get_pdb_doc("test_database_27", "qwertyuiopaqwsde1254");
-//     let doc_obj_dupl = get_pdb_doc("test_database_27", "qwertyuiopaqwsde12545");
-//     database1 = new BeanBagDB(doc_obj_orig);
-//     await database1.ready(); // Ensure the database is ready before running tests
-//     database2 = new BeanBagDB(doc_obj_dupl);
-//     await database2.ready(); // Ensure the database is ready before running tests
-//     try {
-//       //console.log(test_schema)
-//       let a = await database1.create("schema",test_schema)
-//     } catch (error) {
-//       console.log("error in before")
-//       console.log(error)
-//     }
-//   });
+  before(async () => {
+    // adding a schema
+    let doc_obj_orig = get_pdb_doc("test_database_27", "qwertyuiopaqwsde1254");
+    let doc_obj_dupl = get_pdb_doc("test_database_27", "qwertyuiopaqwsde12545");
+    database1 = new BeanBagDB(doc_obj_orig);
+    await database1.ready(); // Ensure the database is ready before running tests
+    console.log(database1.encryption_key)
+    database2 = new BeanBagDB(doc_obj_dupl);
+    await database2.ready(); // Ensure the database is ready before running tests
+    try {
+      //console.log(test_schema)
+      let a = await database1.create("schema",test_schema)
+    } catch (error) {
+      console.log("error in before")
+      console.log(error)
+    }
+  });
 
-//   it(`when inserting the book schema again in db1, must throw error`, async () => {
-//     await rejects(async () => {
-//       try {
-//         await database1.create("schema", test_schema);   
-//       } catch (error) {
-//         console.log(error)
-//         throw error
-//       }
-//     }, DocCreationError);
-//   });
+  it(`when inserting the book schema again in db1, must throw error`, async () => {
+    await rejects(async () => {
+      try {
+        await database1.create("schema", test_schema);   
+      } catch (error) {
+        console.log(error)
+        throw error
+      }
+    }, DocCreationError);
+  });
 
-//   it(`when inserting the book schema again in db2 , must throw error`, async () => {
-//     await rejects(async () => {
-//       try {
-//         await database2.create("schema", test_schema);   
-//       } catch (error) {
-//         console.log(error)
-//         throw error
-//       }
-//     }, DocCreationError);
-//   });
+  it(`when inserting the book schema again in db2 , must throw error`, async () => {
+    await rejects(async () => {
+      try {
+        await database2.create("schema", test_schema);   
+      } catch (error) {
+        console.log(error)
+        throw error
+      }
+    }, DocCreationError);
+  });
 
-//   it('successfully inserts a book doc with some secret', async () => {
-//     const book1 = {
-//         title: "Harry Potter",
-//         author: "J.K. Rowling",
-//         isbn: "9780439139601",
-//         publicationYear: 1999,
-//         genre: "Fantasy",
-//         publisher: "ABC DEF",
-//         secret: "Super secret 1"
-//     }
-//     await expect(database1.create("book", book1)).to.eventually.have.property("_id");
-//   });
+  it('successfully inserts a book doc with some secret', async () => {
+    const book1 = {
+        title: "Harry Potter",
+        author: "J.K. Rowling",
+        isbn: "9780439139601",
+        publicationYear: 1999,
+        genre: "Fantasy",
+        publisher: "ABC DEF",
+        secret: "Super secret 1"
+    }
+    await expect(database1.create("book", book1)).to.eventually.have.property("_id");
+  });
 
-//   it('gives error when inserting the same doc again', async () => {
-//     const book1 = {
-//         title: "Harry Potter",
-//         author: "J.K. Rowling",
-//         isbn: "9780439139601",
-//         publicationYear: 1999,
-//         genre: "Fantasy",
-//         publisher: "ABC DEF",
-//         secret: "Super secret 1"
-//     };
-//     await rejects(async () => {
-//       try {
-//         await database1.create("book", book1);   
-//       } catch (error) {
-//         console.log(error)
-//         throw error
-//       }
-//     }, DocCreationError);
-//     // await expect(database1.create("book", book1)).to.eventually.have.property("_id");
-//   })
+  it('gives error when inserting the same doc again', async () => {
+    const book1 = {
+        title: "Harry Potter",
+        author: "J.K. Rowling",
+        isbn: "9780439139601",
+        publicationYear: 1999,
+        genre: "Fantasy",
+        publisher: "ABC DEF",
+        secret: "Super secret 1"
+    };
+    await rejects(async () => {
+      try {
+        await database1.create("book", book1);   
+      } catch (error) {
+        console.log(error)
+        throw error
+      }
+    }, DocCreationError);
+  })
 
-//   it('fetches the doc and the encrypted field is returned successfully', async () => {
-//     const book1 = {
-//         title: "Harry Potter",
-//         author: "J.K. Rowling",
-//         isbn: "9780439139601",
-//         publicationYear: 1999,
-//         genre: "Fantasy",
-//         publisher: "ABC DEF",
-//         secret: "Super secret 1"
-//     };
-//     await expect(database1.read({schema:"schema",data:{"title":book1.title,"author":book1.author}})).to.eventually.have.nested.property('doc.secret',book1.secret);
-//   })
+  it('fetches the doc and the encrypted field is returned successfully', async () => {
+    const book1 = {
+        title: "Harry Potter",
+        author: "J.K. Rowling",
+        isbn: "9780439139601",
+        publicationYear: 1999,
+        genre: "Fantasy",
+        publisher: "ABC DEF",
+        secret: "Super secret 1"
+    };
+    let data = await database1.read({schema:"book",data:{"title":book1.title,"author":book1.author}})
+    //console.log(data)
+    assert(data.doc.data.secret == book1.secret) 
+    //await expect(database1.read({schema:"book",data:{"title":book1.title,"author":book1.author}})).to.eventually.have.nested.property('secret',book1.secret);
+  })
   
-//   it('should throw encryption error when using the incorrect key', async () => {
-//     const book1 = {
-//         title: "Harry Potter",
-//         author: "J.K. Rowling",
-//         isbn: "9780439139601",
-//         publicationYear: 1999,
-//         genre: "Fantasy",
-//         publisher: "ABC DEF",
-//         secret: "Super secret 1"
-//     }
+  it('should throw encryption error when using the incorrect key', async () => {
+    const book1 = {
+        title: "Harry Potter",
+        author: "J.K. Rowling",
+        isbn: "9780439139601",
+        publicationYear: 1999,
+        genre: "Fantasy",
+        publisher: "ABC DEF",
+        secret: "Super secret 1"
+    }
 
-//     await rejects(async () => {
-//       try {
-//         let d = await database2.read({schema:"book",data:{"title":book1.title,"author":book1.author}});   
-//       } catch (error) {
-//         console.log(error)
-//         throw error
-//       }
-//     }, EncryptionError)
+    await rejects(async () => {
+      try {
+        let d = await database2.read({schema:"book",data:{"title":book1.title,"author":book1.author}});   
+      } catch (error) {
+        console.log(error)
+        throw error
+      }
+    }, EncryptionError)
 
-//     //await expect(database1.read({"title":book1.title,"author":book1.author})).to.eventually.have.nested.property('doc.secret',book1.secret);
-//   })
+    //await expect(database1.read({"title":book1.title,"author":book1.author})).to.eventually.have.nested.property('doc.secret',book1.secret);
+  })
 
-// })
+})
 
