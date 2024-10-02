@@ -6,7 +6,7 @@
   "module": "src/index.js",
   "type": "module",
   "scripts": {
-    "test": "mocha",
+    "test": "mocha;rm -r test_database_27;rm -r test_database_26;rm -r test_database_25;rm -r test_database_24",
     "docgen": "npx jsdoc -c jsdoc.json"
   },
   "repository": {
@@ -29,6 +29,7 @@
   "devDependencies": {
     "ajv": "^8.17.1",
     "chai": "^5.1.1",
+    "chai-as-promised": "^8.0.0",
     "dotenv": "^16.4.5",
     "jsdoc": "^4.0.3",
     "mocha": "^10.7.3",

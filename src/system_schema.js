@@ -19,7 +19,7 @@ export const schema_schema = {
       }, 
       name: {
         type: "string",
-        minLength: 5,
+        minLength: 4,
         maxLength: 50,
         pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
         description:"This is the name of the schema.It cannot be changed later"
@@ -74,16 +74,17 @@ export const schema_schema = {
             default: false,
             description:
               "If set, only a single records with this schema will be allowed to insert in the database",
-          },
+          }
         },
-        required :["primary_keys","non_editable_fields","single_record","encrypted_fields"]
+        required :["primary_keys","non_editable_fields","encrypted_fields"]
       },
     },
     required: ["name","description","schema", "settings"],
   },
   settings: {
-    primary_key: ["name"],
+    primary_keys: ["name"],
     editable_fields: ["schema", "settings","description"],
+    encrypted_fields:[]
   },
 };
 
@@ -160,6 +161,35 @@ export const system_schemas = {
       single_record:false
     },
   }
+  // ,
+  // edges:{
+  //   name:"edges",
+  //   description:"To relate one document to another.Labels can be configured using the db_network setting document.This stores edges of a simple directed graph",
+  //   schema:{
+  //     required:["graph","node1","node2","label"],
+  //     type:"object",
+  //     additionalProperties: false,
+  //     properties : {
+  //       graph:{
+  //         type:"string",
+  //         minLength:3,
+  //         default:"default",
+  //         maxLength:100,
+  //         description:"Name of the graph in which this edge is being added. This is managed by the db_network setting "
+  //       },
+  //       node1:{
+  //         type:"string",
+  //         description:"the source of this directed edge. this must be a valid document id."
+  //       }
+  //     }
+  //   },
+  //   settings :{
+  //     primary_key:["graph","node1","node2","label"],
+  //     non_editable_fields:["node1","node2","graph"],
+  //     encrypted_fields:[],
+  //     single_record:false
+  //   }
+  // }
 };
 
 // this is not stored in the DB. only for validating the metadata during doc update
