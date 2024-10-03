@@ -2,7 +2,7 @@
 // to test initialization of the BeanBagDB class
 import { get_pdb_doc } from "./pouchdb.js";
 import assert, { throws, strictEqual, rejects } from "assert";
-import { BeanBagDB, DocCreationError, EncryptionError, ValidationError } from "../src/index.js";
+import { BeanBagDB, DocCreationError, EncryptionError, ValidationError,DocNotFoundError } from "../src/index.js";
 
 import * as chai from 'chai';
 import chaiAsPromised from 'chai-as-promised';
@@ -830,7 +830,7 @@ describe("Doc insertion tests with encryption", async () => {
       try {
         await database1.create("schema", test_schema);   
       } catch (error) {
-        console.log(error)
+        //console.log(error)
         throw error
       }
     }, DocCreationError);
@@ -841,7 +841,7 @@ describe("Doc insertion tests with encryption", async () => {
       try {
         await database2.create("schema", test_schema);   
       } catch (error) {
-        console.log(error)
+        //console.log(error)
         throw error
       }
     }, DocCreationError);
@@ -874,7 +874,7 @@ describe("Doc insertion tests with encryption", async () => {
       try {
         await database1.create("book", book1);   
       } catch (error) {
-        console.log(error)
+        //console.log(error)
         throw error
       }
     }, DocCreationError);
@@ -910,10 +910,243 @@ describe("Doc insertion tests with encryption", async () => {
       try {
         let d = await database2.read({schema:"book",data:{"title":book1.title,"author":book1.author}});   
       } catch (error) {
-        console.log(error)
+        //console.log(error)
         throw error
       }
     }, EncryptionError)
   })
 
 })
+
+// read, update, delete 
+
+/**
+ * read 
+ */
+
+describe("Doc read tests", async () => {
+  let database3
+  let schema_docs_invalid = [
+    [
+      "error when required genre is missing",
+      {
+        title: "Harry Potter",
+        author: "J.K. Rowling",
+        isbn: "9780439139601",
+        publicationYear: 1999,
+      },
+    ],
+    [
+      "error when author name is not string",
+      {
+        title: "Harry Potter",
+        author: ["J.K. Rowling"],
+        isbn: "9780439139601",
+        publicationYear: 1999,
+        genre: "Fantasy",
+      },
+    ],
+  ];
+
+  const test_schema = {
+    name:"book",
+    description:"Test schema 1",
+    schema: {
+      $schema: "http://json-schema.org/draft-07/schema#",
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          minLength: 1,
+          description: "The title of the book",
+        },
+        author: {
+          type: "string",
+          minLength: 1,
+          description: "The author of the book",
+        },
+        isbn: {
+          type: "string",
+          pattern: "^(97(8|9))?\\d{9}(\\d|X)$",
+          description: "The ISBN of the book, can be 10 or 13 digits",
+        },
+        publicationYear: {
+          type: "integer",
+          minimum: 1450,
+          maximum: 2024,
+          description:
+            "The year the book was published (between 1450 and 2024)",
+        },
+        genre: {
+          type: "string",
+          enum: [
+            "Fiction",
+            "Non-Fiction",
+            "Science",
+            "History",
+            "Fantasy",
+            "Biography",
+            "Children",
+            "Mystery",
+            "Horror",
+          ],
+          description: "The genre of the book",
+        },
+        language: {
+          type: "string",
+          description: "The language of the book",
+          default: "English",
+        },
+        publisher: {
+          type: "string",
+          description: "The publisher of the book",
+          minLength: 1,
+        },
+        pages: {
+          type: "integer",
+          minimum: 1,
+          description: "The number of pages in the book",
+        },
+        secret:{
+          type:"string"
+        }
+      },
+      required: ["title", "author"],
+      additionalProperties: false,
+    },
+    settings : {
+      primary_keys:['title','author'],
+      encrypted_fields:[],
+      non_editable_fields:["secret"],
+      single_record:false
+    }
+  }
+
+  const book1 = {
+    title: "Harry Potter",
+    author: "J.K. Rowling",
+    isbn: "9780439139601",
+    publicationYear: 1999,
+    genre: "Fantasy",
+    publisher: "ABC DEF",
+    secret:"Super secret1"
+  }
+  const meta = {
+    link:"sample1"
+  }
+  let doc_inserted 
+
+  before(async () => {
+    // adding a schema
+    let doc_obj = get_pdb_doc("test_database_28", "qwertyuiopaqwsde1254");
+    database3 = new BeanBagDB(doc_obj);
+    await database3.ready(); // Ensure the database is ready before running tests
+    try {
+      let a = await database3.create("schema",test_schema)
+      doc_inserted = await database3.create("book",book1,meta)
+      console.log("Ready for more tests...");  
+    } catch (error) {
+      //console.log("error in before")
+      console.log(error)
+    }
+  })
+
+  it('fetches the doc and the encrypted field is returned unencrypted successfully', async () => {
+    let data = await database3.read({schema:"book",data:{"title":book1.title,"author":book1.author}})
+    assert(data.doc.data.secret == book1.secret) 
+  })
+
+
+  it('read doc using _id', async () => {
+    let data = await database3.read({"_id":doc_inserted._id})
+    assert(data.doc.data.secret == book1.secret) 
+  })
+
+  it('read doc using link', async () => {
+    let data = await database3.read({"link":meta.link})
+    assert(data.doc.data.secret == book1.secret) 
+  })
+  
+  it('read doc using primary key', async () => {
+    let data = await database3.read({schema:"book",data:{title:book1.title,author:book1.author}})
+    assert(data.doc.data.secret == book1.secret) 
+  })
+
+  it('throws error when  incomplete  primary key given', async () => {
+    await rejects(async () => {
+      try {
+        let a = await database3.read({"schema":"book","data":{title:book1.title}});   
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+    }, ValidationError);
+  })
+
+  it('error when doc does not exists by _id', async () => {
+    await rejects(async () => {
+      try {
+        let a = await database3.read({"_id":"test"});   
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+    }, DocNotFoundError);
+  })
+
+  it('error when doc does not exists by link', async () => {
+    await rejects(async () => {
+      try {
+        let a = await database3.read({"link":"test"});   
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+    }, DocNotFoundError);
+  })
+
+  it('error when doc does not exists by schema', async () => {
+    await rejects(async () => {
+      try {
+        let a = await database3.read({"schema":"book","data":{"title":"sample","author":"sample"}});   
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+    }, DocNotFoundError);
+  })
+  
+  it('check if schema included', async () => {
+    let data = await database3.read({schema:"book",data:{"title":book1.title,"author":book1.author}},true)
+    assert(Object.keys(data).length==2)
+  })
+
+  it('check if schema not included', async () => {
+    let data = await database3.read({schema:"book",data:{"title":book1.title,"author":book1.author}},false)
+    assert(Object.keys(data).length==1)
+  })
+})
+
+/**
+ * update
+ * - update parts of a doc
+ * - update full doc
+ * - update a doc with non editable field
+ * - update a doc with encrypted field 
+ * - update a system doc 
+ * - update meta.tags of a doc 
+ * - update meta.link of a doc
+ * - update primary key  
+ */
+
+/**
+ * delete
+ * - delete a custom schema doc
+ * - delete a setting schema doc
+ * - delete a setting doc 
+ * - delete a relation 
+ */
+
+/**
+ * relation actions
+ */
