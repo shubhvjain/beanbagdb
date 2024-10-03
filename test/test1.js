@@ -275,21 +275,17 @@ import {BeanBagDB}  from '../src/index.js';
 
 let d 
   try {
-    d = await database1.create("book", book1);   
+    d = await database1.create("book", book1,{link:"sample1"});   
     console.log(d)
-  } catch (error) {
-    console.log(error)
-    throw error
-  }
-
-
-  try {
     let rec = await database1.read({"_id":d._id});   
     console.log(rec)
+
+    let e = await database1.create("book", {...book1,title:"Something"},{link:"sample1"});   
+    console.log(e)
+
   } catch (error) {
     console.log(error)
     throw error
   }
-
 
 })()

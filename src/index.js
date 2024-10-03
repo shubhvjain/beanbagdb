@@ -343,8 +343,10 @@ export class BeanBagDB {
    */
   async create(schema, data, meta = {}, settings = {}) {
     this._check_ready_to_use();
+    if(!schema){throw new DocCreationError([{"message":`No schema provided`}]);}
+    if(Object.keys(data).length==0){throw new DocCreationError([{"message":`No data provided`}]);}
     try {
-      let doc_obj = await this._insert_pre_checks(schema, data, settings);
+      let doc_obj = await this._insert_pre_checks(schema, data,meta, settings);
       let new_rec = await this.db_api.insert(doc_obj);
       return {_id:new_rec["id"],_rev : new_rec["rev"] ,...doc_obj};
     } catch (error) {
@@ -540,9 +542,9 @@ export class BeanBagDB {
     if (!criteria["selector"]) {
       throw new Error("Invalid search query.");
     }
-    if (!criteria["selector"]["schema"]) {
-      throw new Error("The search criteria must contain the schema");
-    }
+    //if (!criteria["selector"]["schema"]) {
+    //  throw new Error("The search criteria must contain the schema");
+    //}
     const results = await this.db_api.search(criteria);
     return results;
   }
@@ -793,9 +795,14 @@ export class BeanBagDB {
         new_data[itm] = this.utils.encrypt(data[itm], this.encryption_key);
       });
     }
+
     // generate the doc object for data
     let doc_obj = this._get_blank_doc(schema);
     doc_obj["data"] = new_data;
+    // if meta exists
+    if(meta){
+      doc_obj["meta"] = {...doc_obj["meta"],...meta};
+    }
     return doc_obj;
   }
 

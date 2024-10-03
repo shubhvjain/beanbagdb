@@ -523,18 +523,6 @@ describe("Doc insertion tests", async () => {
         publicationYear: 1999,
       },
     ],
-    // ["settings.primary_keys is missing",
-    //   {
-    //   name: "contact",
-    //   description: "This can be left blank",
-    //   schema: {
-    //     "type":"object",
-    //     "properties":{"name":{"type":"string"}},
-    //     "additionalProperties":true
-    //   },
-    //   settings: {
-    //   },
-    // }],
     [
       "error when author name is not string",
       {
@@ -633,6 +621,14 @@ describe("Doc insertion tests", async () => {
     }
   })
 
+  const book1 = {
+    title: "Harry Potter",
+    author: "J.K. Rowling",
+    isbn: "9780439139601",
+    publicationYear: 1999,
+    genre: "Fantasy",
+    publisher: "ABC DEF"
+}
   
   it(`when inserting the book schema again, must throw error`, async () => {
     await rejects(async () => {
@@ -652,6 +648,86 @@ describe("Doc insertion tests", async () => {
       }, ValidationError);
     })
   })
+
+  it('successfully inserts a book doc', async () => {
+    await expect(database.create("book", book1)).to.eventually.have.property("_id");
+  });
+
+
+  let invalid_meta = [
+    ["invalid field",{tabs:[]}],
+    ["invalid tags",{tags:"a,b,c"}],
+    ["invalid link",{link:{'1':1}}],
+  ]
+
+  invalid_meta.forEach((element, index) => {
+    it(`${element[0]}`, async () => {
+      let bd = {...book1}
+      bd.title = bd.title+" "+index
+      await rejects(async () => {
+        await database.create("schema",bd,element[1]);
+      }, ValidationError);
+    })
+  })
+  
+  it('successfully inserts a book doc with a link', async () => {
+    let bd = {...book1}
+    bd.title = bd.title+" test1"
+    let new_rec = await database.create("book", bd,{link:"sample1"})
+    assert(new_rec.meta.link=="sample1")
+  });
+
+  it(`throw error when inserting the book with same link again`, async () => {
+    await rejects(async () => {
+      try {
+        let bd = {...book1}
+        bd.title = bd.title+" test1234"
+        await database.create("book", bd,{link:"sample1"});   
+      } catch (error) {
+        console.log(error)
+        console.log("22222")
+        throw error
+      }
+    }, DocCreationError);
+  })
+
+
+  it('successfully inserts a book doc with tags', async () => {
+    let bd = {...book1}
+    bd.title = bd.title+" test2"
+    let tags1 = ["tag1"]
+    let new_rec = await database.create("book", bd,{tags:tags1})
+    assert(new_rec.meta.tags===tags1)
+  });
+
+  it(`throw error when no schema provided`, async () => {
+    await rejects(async () => {
+      try {
+        let bd = {...book1}
+        bd.title = bd.title+" test1234"
+        await database.create("", bd,{link:"sample1"});   
+      } catch (error) {
+        console.log(error)
+        console.log("22222")
+        throw error
+      }
+    }, DocCreationError);
+  })
+  
+  it(`throw error when no data provided`, async () => {
+    await rejects(async () => {
+      try {
+        let bd = {...book1}
+        bd.title = bd.title+" test1234"
+        await database.create("book",{},{link:"sample1"});   
+      } catch (error) {
+        console.log(error)
+        throw error
+      }
+    }, DocCreationError);
+  })
+ 
+
 })
 
 describe("Doc insertion tests with encryption", async () => {
@@ -817,7 +893,6 @@ describe("Doc insertion tests with encryption", async () => {
     let data = await database1.read({schema:"book",data:{"title":book1.title,"author":book1.author}})
     //console.log(data)
     assert(data.doc.data.secret == book1.secret) 
-    //await expect(database1.read({schema:"book",data:{"title":book1.title,"author":book1.author}})).to.eventually.have.nested.property('secret',book1.secret);
   })
   
   it('should throw encryption error when using the incorrect key', async () => {
@@ -839,9 +914,6 @@ describe("Doc insertion tests with encryption", async () => {
         throw error
       }
     }, EncryptionError)
-
-    //await expect(database1.read({"title":book1.title,"author":book1.author})).to.eventually.have.nested.property('doc.secret',book1.secret);
   })
 
 })
-
