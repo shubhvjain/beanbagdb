@@ -385,6 +385,7 @@ export class BeanBagDB {
     if (criteria._id) {
       try {
         let doc = await this.db_api.get(criteria._id)
+        //console.log(doc)
         obj.doc = doc;
       } catch (error) { throw new DocNotFoundError(BeanBagDB.error_codes.doc_not_found)}
     } else if (criteria.link) {
@@ -453,20 +454,13 @@ export class BeanBagDB {
  * @throws {DocUpdateError} - If a document with conflicting primary keys already exists.
  * @throws {ValidationError} - If the provided data or metadata is invalid according to the schema.
  */
-  async update(
-    doc_search_criteria,
-    rev_id,
-    updates,
-    update_source = "api",
-    save_conflict = true
-  ) {
+  async update(doc_search_criteria, updates, rev_id="", update_source = "api", save_conflict = true) {
     this._check_ready_to_use();
     // making a big assumption here : primary key fields cannot be edited
     // so updating the doc will not generate primary key conflicts
     let req_data = await this.read(doc_search_criteria, true);
     let schema = req_data.schema;
     let full_doc = req_data.doc; 
-
     // @TODO fix this : what to do if the rev id does not match
     // if (full_doc["_rev"] != rev_id) {
     //   // throw error , save conflicting doc separately by default
@@ -479,47 +473,68 @@ export class BeanBagDB {
     let all_fields = Object.keys(schema.schema.properties);
     let unedit_fields = schema.settings["non_editable_fields"];
     let edit_fields = all_fields.filter((item) => !unedit_fields.includes(item))
-
     // now generate the new doc with updates
-    let allowed_updates = this.util_filter_object(updates.data, edit_fields);
-    let updated_data = { ...full_doc.data, ...allowed_updates };
+    let something_to_update = false
+    let allowed_updates = this.util_filter_object(updates.data||{}, edit_fields);
+    if(Object.keys(allowed_updates).length>0){
+      //  todo : what if additionalField are allowed ??
+      let updated_data = { ...full_doc.data, ...allowed_updates };
 
-    this.util_validate_data(schema.schema, updated_data);
-
-    // primary key check if multiple records can  be created
-    if ( schema.settings["single_record"] == false && schema.settings["primary_keys"].length > 0) {
-      let pri_fields = schema.settings["primary_keys"];
-      let search_criteria = { schema: schema.name };
-      pri_fields.map((itm) => {search_criteria["data." + itm] = updated_data[itm];});
-      let search = await this.search({ selection: search_criteria });
-      if (search.docs.length > 0) {
-        if (search.docs.length == 1) {
-          let thedoc = search.docs[0];
-          if (thedoc["_id"] != doc_id) {
-            throw new DocUpdateError("Update not allowed. Document with the same primary key already exists");
+      this.util_validate_data(schema.schema, updated_data);
+  
+      // primary key check if multiple records can  be created
+      if (schema.settings["primary_keys"].length > 0) {
+        let pri_fields = schema.settings["primary_keys"];
+        let search_criteria = { schema: schema.name };
+        pri_fields.map((itm) => {search_criteria["data." + itm] = updated_data[itm];});
+        let search = await this.search({ selector: search_criteria });
+        if (search.docs.length > 0) {
+          if (search.docs.length == 1) {
+            let thedoc = search.docs[0];
+            if (thedoc["_id"] != full_doc._id) {
+              throw new DocUpdateError("Update not allowed. Document with the same primary key already exists");
+            }
+          } else {
+            throw new Error("There is something wrong with the schema primary keys");
           }
-        } else {
-          throw new Error("There is something wrong with the schema primary keys");
         }
       }
+  
+      full_doc["data"] = updated_data;
+      something_to_update = true
     }
-
-    // encrypt the data
-    full_doc["data"] = updated_data;
-    full_doc = this._encrypt_doc(schema, full_doc);
-
     if (updates.meta) {
       let m_sch = sys_sch.editable_metadata_schema;
       let editable_fields = Object.keys(m_sch["properties"]);
       let allowed_meta = this.util_filter_object(updates.meta, editable_fields);
       this.util_validate_data(m_sch, allowed_meta);
-      full_doc["meta"] = { ...full_doc["meta"], ...allowed_meta };
-    }
+      // if update has a link ,then check if it already exists 
+      if (allowed_meta.link){
+        let search = await this.search({ selector: {"meta.link":allowed_meta.link} })
+        if (search.docs.length > 0) {
+          if (search.docs.length == 1) {
+            let thedoc = search.docs[0];
+            if (thedoc["_id"] != full_doc._id) {
+              throw new DocUpdateError("Update not allowed. Document with the same link already exists");
+            }
+          } else {throw new Error("There is something wrong.")}
+        }
+      }
 
-    full_doc.meta["updated_on"] = this.util_get_now_unix_timestamp();
-    full_doc.meta["updated_by"] = update_source;
-    let up = await this.db_api.update(full_doc);
-    return up;
+      full_doc["meta"] = { ...full_doc["meta"], ...allowed_meta };
+      something_to_update = true
+    }
+    if(something_to_update){
+      // encrypt the data again since read returns decrypted data
+      full_doc = this._encrypt_doc(schema, full_doc); 
+      full_doc.meta["updated_on"] = this.util_get_now_unix_timestamp();
+      full_doc.meta["updated_by"] = update_source;
+      // console.log(full_doc)
+      let up = await this.db_api.update(full_doc);
+      return up;
+    }else{
+      throw new DocUpdateError("Nothing to update")
+    }
   }
 
 
@@ -716,19 +731,17 @@ export class BeanBagDB {
    * @returns {Object}
    */
   _encrypt_doc(schema_obj, doc_obj) {
-    if (
-      schema_obj.settings["encrypted_fields"] &&
-      schema_obj.settings["encrypted_fields"].length > 0
-    ) {
-      // console.log(schema_obj,doc_obj)
-      schema_obj.settings["encrypted_fields"].forEach((itm) => {
-        doc_obj.data[itm] = this.utils.encrypt(
-          doc_obj.data[itm],
-          this.encryption_key
-        );
-      });
+    try {
+      if (schema_obj.settings["encrypted_fields"].length > 0) {
+        // console.log(schema_obj,doc_obj)
+        schema_obj.settings["encrypted_fields"].forEach((itm) => {
+          doc_obj.data[itm] = this.utils.encrypt(doc_obj.data[itm],this.encryption_key)
+        });
+      }
+      return { ...doc_obj };  
+    } catch (error) {
+      throw new EncryptionError([{message:error.message}])
     }
-    return { ...doc_obj };
   }
 
   /**

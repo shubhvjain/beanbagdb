@@ -2,7 +2,7 @@
 // to test initialization of the BeanBagDB class
 import { get_pdb_doc } from "./pouchdb.js";
 import assert, { throws, strictEqual, rejects } from "assert";
-import { BeanBagDB, DocCreationError, EncryptionError, ValidationError,DocNotFoundError } from "../src/index.js";
+import { BeanBagDB, DocCreationError, EncryptionError, ValidationError,DocNotFoundError, DocUpdateError } from "../src/index.js";
 
 import * as chai from 'chai';
 import chaiAsPromised from 'chai-as-promised';
@@ -918,7 +918,6 @@ describe("Doc insertion tests with encryption", async () => {
 
 })
 
-// read, update, delete 
 
 /**
  * read 
@@ -926,27 +925,7 @@ describe("Doc insertion tests with encryption", async () => {
 
 describe("Doc read tests", async () => {
   let database3
-  let schema_docs_invalid = [
-    [
-      "error when required genre is missing",
-      {
-        title: "Harry Potter",
-        author: "J.K. Rowling",
-        isbn: "9780439139601",
-        publicationYear: 1999,
-      },
-    ],
-    [
-      "error when author name is not string",
-      {
-        title: "Harry Potter",
-        author: ["J.K. Rowling"],
-        isbn: "9780439139601",
-        publicationYear: 1999,
-        genre: "Fantasy",
-      },
-    ],
-  ];
+
 
   const test_schema = {
     name:"book",
@@ -1129,15 +1108,249 @@ describe("Doc read tests", async () => {
 
 /**
  * update
- * - update parts of a doc
- * - update full doc
- * - update a doc with non editable field
- * - update a doc with encrypted field 
  * - update a system doc 
- * - update meta.tags of a doc 
- * - update meta.link of a doc
- * - update primary key  
+
  */
+
+
+describe("Doc update tests", async () => {
+  let database3
+
+  const test_schema = {
+    name:"book",
+    description:"Test schema 1",
+    schema: {
+      $schema: "http://json-schema.org/draft-07/schema#",
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          minLength: 1,
+          description: "The title of the book",
+        },
+        author: {
+          type: "string",
+          minLength: 1,
+          description: "The author of the book",
+        },
+        isbn: {
+          type: "string",
+          pattern: "^(97(8|9))?\\d{9}(\\d|X)$",
+          description: "The ISBN of the book, can be 10 or 13 digits",
+        },
+        publicationYear: {
+          type: "integer",
+          minimum: 1450,
+          maximum: 2024,
+          description:
+            "The year the book was published (between 1450 and 2024)",
+        },
+        genre: {
+          type: "string",
+          enum: [
+            "Fiction",
+            "Non-Fiction",
+            "Science",
+            "History",
+            "Fantasy",
+            "Biography",
+            "Children",
+            "Mystery",
+            "Horror",
+          ],
+          description: "The genre of the book",
+        },
+        language: {
+          type: "string",
+          description: "The language of the book",
+          default: "English",
+        },
+        publisher: {
+          type: "string",
+          description: "The publisher of the book",
+          minLength: 1,
+        },
+        pages: {
+          type: "integer",
+          minimum: 1,
+          description: "The number of pages in the book",
+        },
+        secret:{
+          type:"string"
+        }
+      },
+      required: ["title", "author"],
+      additionalProperties: false,
+    },
+    settings : {
+      primary_keys:['title','author'],
+      non_editable_fields:['pages','genre'],
+      encrypted_fields:["secret"]
+    }
+  }
+
+  const book1 = {
+    title: "Harry Potter",
+    author: "J.K. Rowling",
+    isbn: "9780439139601",
+    publicationYear: 1999,
+    genre: "Fantasy",
+    publisher: "ABC DEF",
+    secret:"Super secret1"
+  }
+  const meta = {
+    link:"sample1",
+    tags:["tag1"]
+  }
+  let doc_inserted 
+
+  before(async () => {
+    // adding a schema
+    let doc_obj = get_pdb_doc("test_database_29", "qwertyuiopaqwsde1254");
+    database3 = new BeanBagDB(doc_obj);
+    await database3.ready(); // Ensure the database is ready before running tests
+    try {
+      let a = await database3.create("schema",test_schema)
+      doc_inserted = await database3.create("book",book1,meta)
+      let b = await database3.create("book",{...book1,title:"HP2"},{...meta,link:"sample2"})
+      //console.log(b)
+      console.log("Ready for more tests...");  
+    } catch (error) {
+      //console.log("error in before")
+      console.log(error)
+    }
+  })
+
+  it('error when nothing to update ', async () => {
+    await rejects(async () => {
+      try {
+        let udata = await database3.update({"_id":doc_inserted._id},{})
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+    }, DocUpdateError)
+})
+
+  it('update selected fields -1 ', async () => {
+    let updates = {publisher:"Something else"}
+    let udata = await database3.update({"_id":doc_inserted._id},{data:updates})
+    let rdata= await database3.read({_id:doc_inserted._id})
+    assert(rdata.doc.data.publisher === updates.publisher )
+  })
+
+  it('update selected fields - primary key', async () => {
+    let updates = {title:"Something else"}
+    let udata = await database3.update({"_id":doc_inserted._id},{data:updates})
+    let rdata= await database3.read({_id:doc_inserted._id})
+    assert(rdata.doc.data.title === updates.title )
+  })
+
+  it('error when updating primary keys that already exists', async () => {
+    let updates = {title:"HP2"}
+    
+    //assert(data.doc.data.secret == book1.secret) 
+    await rejects(async () => {
+      try {
+        let udata = await database3.update({"_id":doc_inserted._id},{data:updates})
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+    }, DocUpdateError)
+  })
+
+  // it('updating full doc', async () => {
+  //   let updates = {title:""}
+  //   let udata = await database3.update({"_id":doc_inserted._id})
+  //   assert(data.doc.data.secret == book1.secret) 
+  // })
+
+  it('updating encrypted field', async () => {
+    let updates = {secret:"Something else"}
+    let udata = await database3.update({"_id":doc_inserted._id},{data:updates})
+    let rdata= await database3.read({_id:doc_inserted._id})
+    assert(rdata.doc.data.secret === updates.secret )
+  })
+
+  it('updating  meta.link', async () => {
+    let updates = {title:"Something else"}
+    let udata = await database3.update({"_id":doc_inserted._id},{meta:{link:"this-is-new"}})
+    //console.log(udata)
+    let rdata= await database3.read({_id:doc_inserted._id})
+    //console.log(rdata)
+    assert(rdata.doc.meta.link === "this-is-new" )
+  })
+
+    it('error updating  meta.link not valid ', async () => {
+      await rejects(async () => {
+        try {
+          let udata = await database3.update({"_id":doc_inserted._id},{meta:{link:1234}})
+        } catch (error) {
+          //console.log(error)
+          throw error
+        }
+      }, ValidationError)
+  })
+
+  it('error updating  meta.link already exists ', async () => {
+    await rejects(async () => {
+      try {
+        let udata = await database3.update({"_id":doc_inserted._id},{meta:{link:"sample2"}})
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+    }, DocUpdateError)
+})
+
+
+  it('updating  meta.tags,link at the same time ', async () => {
+    let updates = {tags:["something","in","the","way"],link:"something-in-the-way"}
+    let udata = await database3.update({"_id":doc_inserted._id},{meta:updates})
+    let rdata= await database3.read({_id:doc_inserted._id})
+    assert(rdata.doc.meta.tags.join(",") == updates.tags.join(",") && rdata.doc.meta.link === updates.link )
+  })
+
+  it('updating  meta.tags ', async () => {
+    let updates = {tags:["something","in","the","way","all","apologies"]}
+    let udata = await database3.update({"_id":doc_inserted._id},{meta:updates})
+    let rdata= await database3.read({_id:doc_inserted._id})
+    assert(rdata.doc.meta.tags.join(",") == updates.tags.join(","))
+  })
+
+
+  it('error when updating fields that does not exists', async () => {
+    await rejects(async () => {
+      try {
+        let updates = {text1:"sample text 1"}
+        let udata = await database3.update({"_id":doc_inserted._id},{data:updates})
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+    }, DocUpdateError)
+  })
+
+  it('updating only non editable fields generates error', async () => {
+    await rejects(async () => {
+      try {
+        let updates = {page:1234,genre:"Horror"}
+        let udata = await database3.update({"_id":doc_inserted._id},{data:updates})
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+    }, DocUpdateError)  
+  })
+
+  it('updating  non editable fields not allowed', async () => {
+    let updates = {title:"HP1234",genre:"Horror"}
+    let udata = await database3.update({"_id":doc_inserted._id},{data:updates})
+    let rdata= await database3.read({_id:doc_inserted._id})
+    assert(rdata.doc.data.title == updates.title && rdata.doc.data.genre != updates.genre )
+  })
+})
 
 /**
  * delete

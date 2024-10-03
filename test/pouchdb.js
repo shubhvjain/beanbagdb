@@ -53,7 +53,7 @@ const pdb = new PouchDB(dbname);
         return iv.toString("hex") + ":" + encrypted; // Prepend the IV for decryption
       },
       decrypt: (encryptedText, encryptionKey) => {
-        console.log(encryptedText, encryptionKey)
+        //console.log(encryptedText, encryptionKey)
         const key = scryptSync(encryptionKey, "salt", 32); // Derive a 256-bit key
         const [ivHex, encryptedHex] = encryptedText.split(":");
         const iv = Buffer.from(ivHex, "hex");
