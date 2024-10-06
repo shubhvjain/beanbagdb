@@ -6,7 +6,7 @@
   "module": "src/index.js",
   "type": "module",
   "scripts": {
-    "test": "mocha;rm -r test_database_29;rm -r test_database_28;rm -r test_database_27;rm -r test_database_26;rm -r test_database_25;rm -r test_database_24",
+    "test": "mocha;rm -rf test_database_*/;",
     "docgen": "npx jsdoc -c jsdoc.json"
   },
   "repository": {

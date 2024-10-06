@@ -1353,13 +1353,376 @@ describe("Doc update tests", async () => {
 })
 
 /**
- * delete
- * - delete a custom schema doc
- * - delete a setting schema doc
- * - delete a setting doc 
- * - delete a relation 
+ * Delete doc 
  */
 
-/**
- * relation actions
- */
+describe("Doc delete tests", async () => {
+  let database3
+
+  const test_schema = {
+    name:"book",
+    description:"Test schema 1",
+    schema: {
+      $schema: "http://json-schema.org/draft-07/schema#",
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          minLength: 1,
+          description: "The title of the book",
+        },
+        author: {
+          type: "string",
+          minLength: 1,
+          description: "The author of the book",
+        },
+        isbn: {
+          type: "string",
+          pattern: "^(97(8|9))?\\d{9}(\\d|X)$",
+          description: "The ISBN of the book, can be 10 or 13 digits",
+        },
+        publicationYear: {
+          type: "integer",
+          minimum: 1450,
+          maximum: 2024,
+          description:
+            "The year the book was published (between 1450 and 2024)",
+        },
+        genre: {
+          type: "string",
+          enum: [
+            "Fiction",
+            "Non-Fiction",
+            "Science",
+            "History",
+            "Fantasy",
+            "Biography",
+            "Children",
+            "Mystery",
+            "Horror",
+          ],
+          description: "The genre of the book",
+        },
+        language: {
+          type: "string",
+          description: "The language of the book",
+          default: "English",
+        },
+        publisher: {
+          type: "string",
+          description: "The publisher of the book",
+          minLength: 1,
+        },
+        pages: {
+          type: "integer",
+          minimum: 1,
+          description: "The number of pages in the book",
+        },
+        secret:{
+          type:"string"
+        }
+      },
+      required: ["title", "author"],
+      additionalProperties: false,
+    },
+    settings : {
+      primary_keys:['title','author'],
+      non_editable_fields:['pages','genre'],
+      encrypted_fields:["secret"]
+    }
+  }
+
+  const book1 = {
+    title: "Harry Potter",
+    author: "J.K. Rowling",
+    isbn: "9780439139601",
+    publicationYear: 1999,
+    genre: "Fantasy",
+    publisher: "ABC DEF",
+    secret:"Super secret1"
+  }
+  const meta = {
+    link:"sample1",
+    tags:["tag1"]
+  }
+  let doc_inserted 
+
+  before(async () => {
+    // adding a schema
+    let doc_obj = get_pdb_doc("test_database_30", "qwertyuiopaqwsde1254");
+    database3 = new BeanBagDB(doc_obj);
+    await database3.ready(); // Ensure the database is ready before running tests
+    try {
+      let a = await database3.create("schema",test_schema)
+      doc_inserted = await database3.create("book",book1,meta)
+      let b = await database3.create("book",{...book1,title:"HP2"},{...meta,link:"sample2"})
+      //console.log(b)
+      console.log("Ready for more tests...");  
+    } catch (error) {
+      //console.log("error in before")
+      console.log(error)
+    }
+  })
+
+  it('error when doc not found ', async () => {
+    await rejects(async () => {
+      try {
+        let udata = await database3.delete({})
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+    }, ValidationError)
+  })
+
+  it('error when doc not found ', async () => {
+    await rejects(async () => {
+      try {
+        let udata = await database3.delete({_id:"1234"})
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+    }, DocNotFoundError)
+  })
+
+
+
+  it('error when deleting system schema', async () => {
+    await rejects(async () => {
+      try {
+        let udata = await database3.delete({"schema":"schema","criteria":{"name":"schema"}})
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+    }, Error)
+  })
+
+  it('error when deleting custom schema', async () => {
+    await rejects(async () => {
+      try {
+        let udata = await database3.delete({"schema":"schema","criteria":{"name":"book"}})
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+    }, Error)
+  })
+
+  it('doc deleted successfully', async () => {
+    await rejects(async () => {
+      try {
+        let udata = await database3.delete({"_id":doc_inserted._id})
+        let del_doc = await database3.read({"_id":doc_inserted._id})
+      } catch (error) {
+        throw error
+      }
+    }, DocNotFoundError)
+  })
+})
+
+// search 
+describe("Doc search tests", async () => {
+  let database3
+
+  const test_schema = {
+    name:"book",
+    description:"Test schema 1",
+    schema: {
+      $schema: "http://json-schema.org/draft-07/schema#",
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          minLength: 1,
+          description: "The title of the book",
+        },
+        author: {
+          type: "string",
+          minLength: 1,
+          description: "The author of the book",
+        },
+        isbn: {
+          type: "string",
+          pattern: "^(97(8|9))?\\d{9}(\\d|X)$",
+          description: "The ISBN of the book, can be 10 or 13 digits",
+        },
+        publicationYear: {
+          type: "integer",
+          minimum: 1450,
+          maximum: 2024,
+          description:
+            "The year the book was published (between 1450 and 2024)",
+        },
+        genre: {
+          type: "string",
+          enum: [
+            "Fiction",
+            "Non-Fiction",
+            "Science",
+            "History",
+            "Fantasy",
+            "Biography",
+            "Children",
+            "Mystery",
+            "Horror",
+          ],
+          description: "The genre of the book",
+        },
+        language: {
+          type: "string",
+          description: "The language of the book",
+          default: "English",
+        },
+        publisher: {
+          type: "string",
+          description: "The publisher of the book",
+          minLength: 1,
+        },
+        pages: {
+          type: "integer",
+          minimum: 1,
+          description: "The number of pages in the book",
+        },
+        secret:{
+          type:"string"
+        }
+      },
+      required: ["title", "author"],
+      additionalProperties: false,
+    },
+    settings : {
+      primary_keys:['title','author'],
+      non_editable_fields:['pages','genre'],
+      encrypted_fields:["secret"]
+    }
+  }
+
+  const book1 = {
+    title: "Harry Potter",
+    author: "J.K. Rowling",
+    isbn: "9780439139601",
+    publicationYear: 1999,
+    genre: "Fantasy",
+    publisher: "ABC DEF",
+    secret:"Super secret1"
+  }
+
+  const book2 = {
+    title: "Harry Potter 2",
+    author: "J.K. Rowling",
+    isbn: "9780439139601",
+    publicationYear: 1999,
+    genre: "Fantasy",
+    publisher: "ABC DEF",
+    secret:"Super secret1"
+  }
+
+  const meta = {
+    link:"sample1",
+    tags:["tag1"]
+  }
+  let doc_inserted 
+  before(async () => {
+    // adding a schema
+    let doc_obj = get_pdb_doc("test_database_31", "qwertyuiopaqwsde1254");
+    database3 = new BeanBagDB(doc_obj);
+    await database3.ready(); // Ensure the database is ready before running tests
+    try {
+      let a = await database3.create("schema",test_schema)
+      doc_inserted = await database3.create("book",book1,meta)
+      let b = await database3.create("book",book2,{...meta,link:"sample2"})
+      //console.log(b)
+      console.log("Ready for more tests...");  
+    } catch (error) {
+      //console.log("error in before")
+      console.log(error)
+    }
+  })
+
+
+  it('error error with invalid query', async () => {
+    await rejects(async () => {
+      try {
+        let udata = await database3.search({})
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+    }, ValidationError)
+  })
+
+  it('all docs', async () => {
+      try {
+        let udata = await database3.search({selector:{}})
+        assert(udata.docs.length==8)
+      } catch (error) {
+        //console.log(error)
+        throw error
+      }
+  })
+
+  it('read docs', async () => {
+    try {
+      let udata = await database3.search({selector:{"schema":"book"}})
+      assert(udata.docs.length==2)
+    } catch (error) {
+      //console.log(error)
+      throw error
+    }
+  })
+
+  it('read docs 2', async () => {
+    try {
+      let udata = await database3.search({selector:{"schema":"schema"}})
+      assert(udata.docs.length==4) // schema,book,setting,key
+    } catch (error) {
+      //console.log(error)
+      throw error
+    }
+  })
+
+  it('read docs 3', async () => {
+    try {
+      let udata = await database3.search({selector:{"meta.link":"sample1"}})
+      assert(udata.docs.length==1) // schema,book,setting,key
+    } catch (error) {
+      //console.log(error)
+      throw error
+    }
+  })
+
+  it('read docs 4', async () => {
+    try {
+      let udata = await database3.search({selector:{"schema":"book","data":{"title":"Book"}}})
+      assert(udata.docs.length==0) // schema,book,setting,key
+    } catch (error) {
+      //console.log(error)
+      throw error
+    }
+  })
+
+  // it('error when deleting system schema', async () => {
+  //   await rejects(async () => {
+  //     try {
+  //       let udata = await database3.delete({"schema":"schema","criteria":{"name":"schema"}})
+  //     } catch (error) {
+  //       //console.log(error)
+  //       throw error
+  //     }
+  //   }, Error)
+  // })
+
+  // it('error when deleting custom schema', async () => {
+  //   await rejects(async () => {
+  //     try {
+  //       let udata = await database3.delete({"schema":"schema","criteria":{"name":"book"}})
+  //     } catch (error) {
+  //       //console.log(error)
+  //       throw error
+  //     }
+  //   }, Error)
+  // })
+
+})

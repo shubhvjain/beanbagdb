@@ -123,12 +123,21 @@ let d
     let rec = await database1.read({"_id":d._id});   
     console.log(rec)
 
-    let e = await database1.create("book", {...book1,title:"Something"},{link:"sample1"});   
+    let e = await database1.create("book", {...book1,title:"Something"},{link:"sample2"});   
     console.log(e)
 
   } catch (error) {
     console.log(error)
     throw error
+  }
+
+
+  try {
+    let s = await database1.search({selector:{}})
+    console.log(s.docs.length)
+    //console.log( JSON.stringify(s,null,2))
+  } catch (error) {
+    console.log(error)
   }
 
 })()

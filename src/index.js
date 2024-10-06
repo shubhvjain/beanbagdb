@@ -545,9 +545,14 @@ export class BeanBagDB {
  * @throws {DocNotFoundError} If the document with the specified ID does not exist.
  * @throws {ValidationError} If the database is not ready to use.
  */
-  async delete(doc_id) {
+  async delete(criteria) {
     this._check_ready_to_use();
-    await this.db_api.delete(doc_id);
+    let doc = await this.read(criteria)
+    const delete_blocked = ["schema","setting",""]
+    if (delete_blocked.includes(doc.schema)){
+      throw new Error(`Deletion of ${doc.schema} doc is not support yet.`)
+    }
+    await this.db_api.delete(doc.doc._id);
   }
 
 
@@ -562,10 +567,10 @@ export class BeanBagDB {
    * E.g
    * @param {Object} criteria
    */
-  async search(criteria) {
+  async search(criteria={}) {
     this._check_ready_to_use();
     if (!criteria["selector"]) {
-      throw new Error("Invalid search query.");
+      throw new ValidationError("Invalid search query.Use {selector:{...query...}}");
     }
     //if (!criteria["selector"]["schema"]) {
     //  throw new Error("The search criteria must contain the schema");
@@ -821,7 +826,6 @@ export class BeanBagDB {
   ////// Utility methods /////////////////////////////////////////////////////////////////////////////
   ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-
   /**
    * Returns the current Unix timestamp in seconds.
    * divide by 1000 (Date.now gives ms) to convert to seconds. 1 s = 1000 ms
@@ -1029,7 +1033,7 @@ export class ValidationError extends Error {
     }else {
       error_messages = [errors]
     }
-    let message = `Validation failed with ${errors.length} error(s): ${error_messages.join(",")}`;
+    let message = `Validation failed with error(s): ${error_messages.join(",")}`;
     super(message);
     this.name = 'ValidationError';
     this.errors = errors;  // Store the list of errors
