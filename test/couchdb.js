@@ -41,7 +41,7 @@ export class BeanBagDB_CouchDB extends BeanBagDB {
         }
       },
       utils:{
-        encrypt:  (text,encryptionKey)=>{
+        encrypt: async  (text,encryptionKey)=>{
           const key = crypto.scryptSync(encryptionKey, 'salt', 32); // Derive a 256-bit key
           const iv = crypto.randomBytes(16); // Initialization vector
           const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
@@ -49,7 +49,7 @@ export class BeanBagDB_CouchDB extends BeanBagDB {
           encrypted += cipher.final('hex');          
           return iv.toString('hex') + ':' + encrypted; // Prepend the IV for later use
         },
-        decrypt :  (encryptedText, encryptionKey)=>{
+        decrypt : async  (encryptedText, encryptionKey)=>{
           const key = crypto.scryptSync(encryptionKey, 'salt', 32); // Derive a 256-bit key
           const [iv, encrypted] = encryptedText.split(':').map(part => Buffer.from(part, 'hex'));
           const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);

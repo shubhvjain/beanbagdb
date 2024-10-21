@@ -41,7 +41,7 @@ const pdb = new PouchDB(dbname);
       },
     },
     utils: {
-      encrypt: (text, encryptionKey) => {
+      encrypt: async (text, encryptionKey) => {
         //console.log(encryptionKey)
         const key = scryptSync(encryptionKey, "salt", 32); // Derive a 256-bit key
         const iv = randomBytes(16); // Initialization vector
@@ -52,7 +52,7 @@ const pdb = new PouchDB(dbname);
         //console.log("Encrypted:", encrypted);
         return iv.toString("hex") + ":" + encrypted; // Prepend the IV for decryption
       },
-      decrypt: (encryptedText, encryptionKey) => {
+      decrypt: async  (encryptedText, encryptionKey) => {
         //console.log(encryptedText, encryptionKey)
         const key = scryptSync(encryptionKey, "salt", 32); // Derive a 256-bit key
         const [ivHex, encryptedHex] = encryptedText.split(":");

@@ -413,7 +413,7 @@ export class BeanBagDB {
     }
     if(include_schema) {obj.schema = data_schema["data"]}
     // decrypt the document 
-    obj.doc = this._decrypt_doc(data_schema["data"], obj.doc)
+    obj.doc = await this._decrypt_doc(data_schema["data"], obj.doc)
     return obj;
   }
 
@@ -526,7 +526,7 @@ export class BeanBagDB {
     }
     if(something_to_update){
       // encrypt the data again since read returns decrypted data
-      full_doc = this._encrypt_doc(schema, full_doc); 
+      full_doc = await this._encrypt_doc(schema, full_doc); 
       full_doc.meta["updated_on"] = this.util_get_now_unix_timestamp();
       full_doc.meta["updated_by"] = update_source;
       // console.log(full_doc)
@@ -715,11 +715,11 @@ export class BeanBagDB {
    * @param {Object} doc_obj
    * @returns {Object}
    */
-  _decrypt_doc(schema_obj, doc_obj) {
+  async _decrypt_doc(schema_obj, doc_obj) {
     try {
-      schema_obj.settings["encrypted_fields"].forEach((itm) => {
-        doc_obj.data[itm] = this.utils.decrypt(doc_obj.data[itm],this.encryption_key)
-      });
+      for (let itm of schema_obj.settings["encrypted_fields"]) {
+        doc_obj.data[itm] = await this.utils.decrypt(doc_obj.data[itm], this.encryption_key);
+      }
       return { ...doc_obj };  
     } catch (error) {
       console.log(error)
@@ -735,13 +735,13 @@ export class BeanBagDB {
    * @param {Object} doc_obj
    * @returns {Object}
    */
-  _encrypt_doc(schema_obj, doc_obj) {
+  async _encrypt_doc(schema_obj, doc_obj) {
     try {
       if (schema_obj.settings["encrypted_fields"].length > 0) {
         // console.log(schema_obj,doc_obj)
-        schema_obj.settings["encrypted_fields"].forEach((itm) => {
-          doc_obj.data[itm] = this.utils.encrypt(doc_obj.data[itm],this.encryption_key)
-        });
+        for (let itm of schema_obj.settings["encrypted_fields"]) {
+          doc_obj.data[itm] = await this.utils.encrypt(doc_obj.data[itm], this.encryption_key);
+        }
       }
       return { ...doc_obj };  
     } catch (error) {
@@ -807,9 +807,9 @@ export class BeanBagDB {
     let new_data = { ...data };
     if (schemaDoc.settings["encrypted_fields"].length > 0) {
       // todo test if encryption is successful 
-      schemaDoc.settings["encrypted_fields"].forEach((itm) => {
-        new_data[itm] = this.utils.encrypt(data[itm], this.encryption_key);
-      });
+      for (let itm of schemaDoc.settings["encrypted_fields"]) {
+        new_data[itm] = await this.utils.encrypt(data[itm], this.encryption_key);
+      }
     }
 
     // generate the doc object for data
