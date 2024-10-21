@@ -41,19 +41,25 @@ const pdb = new PouchDB(dbname);
       },
     },
     utils: {
-      encrypt: (text, encryptionKey) => {
+      encrypt: async (text, encryptionKey) => {
+        //console.log(encryptionKey)
         const key = scryptSync(encryptionKey, "salt", 32); // Derive a 256-bit key
         const iv = randomBytes(16); // Initialization vector
         const cipher = createCipheriv("aes-256-cbc", key, iv);
         let encrypted = cipher.update(text, "utf8", "hex");
         encrypted += cipher.final("hex");
-        return iv.toString("hex") + ":" + encrypted; // Prepend the IV for later use
+        //console.log("IV:", iv.toString("hex"));
+        //console.log("Encrypted:", encrypted);
+        return iv.toString("hex") + ":" + encrypted; // Prepend the IV for decryption
       },
-      decrypt: (encryptedText, encryptionKey) => {
+      decrypt: async  (encryptedText, encryptionKey) => {
+        //console.log(encryptedText, encryptionKey)
         const key = scryptSync(encryptionKey, "salt", 32); // Derive a 256-bit key
-        const [iv, encrypted] = encryptedText
-          .split(":")
-          .map((part) => Buffer.from(part, "hex"));
+        const [ivHex, encryptedHex] = encryptedText.split(":");
+        const iv = Buffer.from(ivHex, "hex");
+        const encrypted = Buffer.from(encryptedHex, "hex");
+        //console.log("IV:", iv.toString("hex"));
+        //console.log("Encrypted:", encrypted.toString("hex"));
         const decipher = createDecipheriv("aes-256-cbc", key, iv);
         let decrypted = decipher.update(encrypted, "hex", "utf8");
         decrypted += decipher.final("utf8");

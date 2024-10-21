@@ -159,7 +159,7 @@ export class BeanBagDB {
     // check for schema_scehma : if yes, check if latest and upgrade if required, if no create a new schema doc
     let logs = ["init started"];
     try {
-      let schema = await this.get_schema("schema");
+      let schema = await this.get("schema",{name:"schema"});
       if (schema["data"]["version"] != sys_sch.schema_schema.version) {
         logs.push("old schema_schema v " + schema["data"]["version"]);
         let full_doc = await this.db_api.get(schema["_id"]);
@@ -169,11 +169,8 @@ export class BeanBagDB {
         logs.push("new schema_schema v " + sys_sch.schema_schema.version);
       }
     } catch (error) {
-      console.log(error);
+      // console.log(error);
       if (error instanceof DocNotFoundError) {
-        console.log("iiii")
-        //error.message == BeanBagDB.error_codes.schema_not_found) {
-        console.log("...adding new ");
         // inserting new schema_schema doc
         let schema_schema_doc = this._get_blank_doc("schema");
         schema_schema_doc.data = sys_sch.schema_schema;
@@ -188,7 +185,7 @@ export class BeanBagDB {
       const schema_data = sys_sch.system_schemas[keys[index]];
       try {
         // console.log(schema_name)
-        let schema1 = await this.get_schema(schema_name);
+        let schema1 = await this.get("schema",{name:schema_name}) 
         if (schema1["data"]["version"] != schema_data.version) {
           logs.push("old " + schema_name + " v " + schema1["data"]["version"]);
           let full_doc = await this.db_api.get(schema1["_id"]);
@@ -198,7 +195,7 @@ export class BeanBagDB {
           logs.push("new " + schema_name + " v " + schema_data.version);
         }
       } catch (error) {
-        console.log(error);
+        // console.log(error);
         if (error instanceof DocNotFoundError) {
           // inserting new schema doc
           let new_schema_doc = this._get_blank_schema_doc(
@@ -227,6 +224,7 @@ export class BeanBagDB {
 
       this.meta.beanbagdb_version_db = this._version;
       this.active = true;
+      console.log(logs.join(","))
     } else {
       // no new updates were done
       console.log("Database already up to date");
@@ -345,10 +343,12 @@ export class BeanBagDB {
    */
   async create(schema, data, meta = {}, settings = {}) {
     this._check_ready_to_use();
+    if(!schema){throw new DocCreationError(`No schema provided`)}
+    if(Object.keys(data).length==0){throw new DocCreationError(`No data provided`)}
     try {
-      let doc_obj = await this._insert_pre_checks(schema, data, settings);
+      let doc_obj = await this._insert_pre_checks(schema, data,meta, settings);
       let new_rec = await this.db_api.insert(doc_obj);
-      return { id: new_rec["id"] };
+      return {_id:new_rec["id"],_rev : new_rec["rev"] ,...doc_obj};
     } catch (error) {
       throw error;
     }
@@ -379,26 +379,41 @@ export class BeanBagDB {
  */
   async read(criteria, include_schema = false) {
     // todo : decrypt doc
-    this._check_ready_to_use();
-    let obj = { doc: none };
+    this._check_ready_to_use()
+    let obj = { doc: null }
+    let data_schema = null
     if (criteria._id) {
-      let doc = await this.db_api.get(criteria._id);
-      obj.doc = doc;
+      try {
+        let doc = await this.db_api.get(criteria._id)
+        //console.log(doc)
+        obj.doc = doc;
+      } catch (error) { throw new DocNotFoundError(BeanBagDB.error_codes.doc_not_found)}
     } else if (criteria.link) {
-      let linkSearch = await this.db_api.search({selector: { "meta.link": criteria.link },});
-      if (linkSearch.docs.length == 0) {throw new DocNotFoundError(BeanBagDB.error_codes.doc_not_found);}
+      let linkSearch = await this.db_api.search({selector: { "meta.link": criteria.link }})
+      if (linkSearch.docs.length == 0) {throw new DocNotFoundError(BeanBagDB.error_codes.doc_not_found)}
       obj.doc = linkSearch.docs[0];
-    } else if (criteria.schema & criteria.data) {
-      let pkSearch = await this.db_api.search({selector: { "schema": criteria.schema, "data":criteria.data },});
-      if (pkSearch.docs.length == 0) {throw new DocNotFoundError(BeanBagDB.error_codes.doc_not_found);}
-      obj.doc = pkSearch.docs[0];
-    } else {
-      throw new ValidationError(`Invalid criteria to read a document. Valid ways : {"schema":"schema_name","data":{...primary key}} or {"_id":""} or {"link":""} `);
-    }
+    } else if (criteria.hasOwnProperty("schema") & criteria.hasOwnProperty("data")) {
+      data_schema = await this.get("schema",{"name":criteria.schema})
+      let A = data_schema["data"]["settings"]["primary_keys"];
+      let search_criteria = { schema: criteria.schema };
+      A.forEach((itm) => {
+        if (!criteria["data"][itm]) {throw new ValidationError("Incomplete Primary key set. Required field(s) : " + A.join(","))}
+        search_criteria["data." + itm] = criteria["data"][itm];
+      });
 
-    if (include_schema) {
-      obj.schema = await this.get_schema(obj.doc.schema);
+      let pkSearch = await this.db_api.search({selector: search_criteria})
+      if (pkSearch.docs.length == 0) {throw new DocNotFoundError(BeanBagDB.error_codes.doc_not_found)}
+      obj.doc = pkSearch.docs[0]
+
+    } else {
+      throw new ValidationError(`Invalid criteria to read a document. Valid ways : {"schema":"schema_name","data":{...primary key}} or {"_id":""} or {"link":""} `)
     }
+    if (!data_schema){
+      data_schema = await this.get("schema",{"name":obj.doc.schema})
+    }
+    if(include_schema) {obj.schema = data_schema["data"]}
+    // decrypt the document 
+    obj.doc = await this._decrypt_doc(data_schema["data"], obj.doc)
     return obj;
   }
 
@@ -439,20 +454,13 @@ export class BeanBagDB {
  * @throws {DocUpdateError} - If a document with conflicting primary keys already exists.
  * @throws {ValidationError} - If the provided data or metadata is invalid according to the schema.
  */
-  async update(
-    doc_search_criteria,
-    rev_id,
-    updates,
-    update_source = "api",
-    save_conflict = true
-  ) {
+  async update(doc_search_criteria, updates, rev_id="", update_source = "api", save_conflict = true) {
     this._check_ready_to_use();
     // making a big assumption here : primary key fields cannot be edited
     // so updating the doc will not generate primary key conflicts
     let req_data = await this.read(doc_search_criteria, true);
     let schema = req_data.schema;
     let full_doc = req_data.doc; 
-
     // @TODO fix this : what to do if the rev id does not match
     // if (full_doc["_rev"] != rev_id) {
     //   // throw error , save conflicting doc separately by default
@@ -464,50 +472,69 @@ export class BeanBagDB {
     // update new value depending on settings.non_editable_fields (if does not exists, all fields are editable)
     let all_fields = Object.keys(schema.schema.properties);
     let unedit_fields = schema.settings["non_editable_fields"];
-    let edit_fields = all_fields.filter(
-      (item) => !unedit_fields.includes(item)
-    );
-
+    let edit_fields = all_fields.filter((item) => !unedit_fields.includes(item))
     // now generate the new doc with updates
-    let allowed_updates = this.util_filter_object(updates.data, edit_fields);
-    let updated_data = { ...full_doc.data, ...allowed_updates };
+    let something_to_update = false
+    let allowed_updates = this.util_filter_object(updates.data||{}, edit_fields);
+    if(Object.keys(allowed_updates).length>0){
+      //  todo : what if additionalField are allowed ??
+      let updated_data = { ...full_doc.data, ...allowed_updates };
 
-    this.util_validate_data(schema.schema, updated_data);
-
-    // primary key check if multiple records can  be created
-    if ( schema.settings["single_record"] == false && schema.settings["primary_keys"].length > 0) {
-      let pri_fields = schema.settings["primary_keys"];
-      let search_criteria = { schema: schema.name };
-      pri_fields.map((itm) => {search_criteria["data." + itm] = updated_data[itm];});
-      let search = await this.search({ selection: search_criteria });
-      if (search.docs.length > 0) {
-        if (search.docs.length == 1) {
-          let thedoc = search.docs[0];
-          if (thedoc["_id"] != doc_id) {
-            throw new DocUpdateError([{message:"Update not allowed. Document with the same primary key already exists",}]);
+      this.util_validate_data(schema.schema, updated_data);
+  
+      // primary key check if multiple records can  be created
+      if (schema.settings["primary_keys"].length > 0) {
+        let pri_fields = schema.settings["primary_keys"];
+        let search_criteria = { schema: schema.name };
+        pri_fields.map((itm) => {search_criteria["data." + itm] = updated_data[itm];});
+        let search = await this.search({ selector: search_criteria });
+        if (search.docs.length > 0) {
+          if (search.docs.length == 1) {
+            let thedoc = search.docs[0];
+            if (thedoc["_id"] != full_doc._id) {
+              throw new DocUpdateError("Update not allowed. Document with the same primary key already exists");
+            }
+          } else {
+            throw new Error("There is something wrong with the schema primary keys");
           }
-        } else {
-          throw new Error("There is something wrong with the schema primary keys");
         }
       }
+  
+      full_doc["data"] = updated_data;
+      something_to_update = true
     }
-
-    // encrypt the data
-    full_doc["data"] = updated_data;
-    full_doc = this._encrypt_doc(schema, full_doc);
-
     if (updates.meta) {
       let m_sch = sys_sch.editable_metadata_schema;
       let editable_fields = Object.keys(m_sch["properties"]);
       let allowed_meta = this.util_filter_object(updates.meta, editable_fields);
       this.util_validate_data(m_sch, allowed_meta);
-      full_doc["meta"] = { ...full_doc["meta"], ...allowed_meta };
-    }
+      // if update has a link ,then check if it already exists 
+      if (allowed_meta.link){
+        let search = await this.search({ selector: {"meta.link":allowed_meta.link} })
+        if (search.docs.length > 0) {
+          if (search.docs.length == 1) {
+            let thedoc = search.docs[0];
+            if (thedoc["_id"] != full_doc._id) {
+              throw new DocUpdateError("Update not allowed. Document with the same link already exists");
+            }
+          } else {throw new Error("There is something wrong.")}
+        }
+      }
 
-    full_doc.meta["updated_on"] = this.util_get_now_unix_timestamp();
-    full_doc.meta["updated_by"] = update_source;
-    let up = await this.db_api.update(full_doc);
-    return up;
+      full_doc["meta"] = { ...full_doc["meta"], ...allowed_meta };
+      something_to_update = true
+    }
+    if(something_to_update){
+      // encrypt the data again since read returns decrypted data
+      full_doc = await this._encrypt_doc(schema, full_doc); 
+      full_doc.meta["updated_on"] = this.util_get_now_unix_timestamp();
+      full_doc.meta["updated_by"] = update_source;
+      // console.log(full_doc)
+      let up = await this.db_api.update(full_doc);
+      return up;
+    }else{
+      throw new DocUpdateError("Nothing to update")
+    }
   }
 
 
@@ -518,9 +545,14 @@ export class BeanBagDB {
  * @throws {DocNotFoundError} If the document with the specified ID does not exist.
  * @throws {ValidationError} If the database is not ready to use.
  */
-  async delete(doc_id) {
+  async delete(criteria) {
     this._check_ready_to_use();
-    await this.db_api.delete(doc_id);
+    let doc = await this.read(criteria)
+    const delete_blocked = ["schema","setting",""]
+    if (delete_blocked.includes(doc.schema)){
+      throw new Error(`Deletion of ${doc.schema} doc is not support yet.`)
+    }
+    await this.db_api.delete(doc.doc._id);
   }
 
 
@@ -535,85 +567,61 @@ export class BeanBagDB {
    * E.g
    * @param {Object} criteria
    */
-  async search(criteria) {
+  async search(criteria={}) {
     this._check_ready_to_use();
     if (!criteria["selector"]) {
-      throw new Error("Invalid search query.");
+      throw new ValidationError("Invalid search query.Use {selector:{...query...}}");
     }
-    if (!criteria["selector"]["schema"]) {
-      throw new Error("The search criteria must contain the schema");
-    }
+    //if (!criteria["selector"]["schema"]) {
+    //  throw new Error("The search criteria must contain the schema");
+    //}
     const results = await this.db_api.search(criteria);
     return results;
   }
 
-    /**
-   * Returns schema document for the given schema name 
-   * @param {String} schema_name - Schema name
-   */
-    async get_schema(schema_name) {
-      let schemaSearch = await this.db_api.search({
-        selector: { schema: "schema", "data.name": schema_name },
-      });
-      // console.log(schemaSearch)
-      if (schemaSearch.docs.length == 0) {
-        throw new DocNotFoundError([{message:BeanBagDB.error_codes.schema_not_found}]);
-      }
-      return schemaSearch.docs[0];
-    }
-
-  /**
-   * Fetches a document based on a given schema and primary key.
-   * In case schema has a single record, leave the primary_key blank `[]`
-   * Can also be used to get special system docs such as settings
-   * @param {String} schema_name
-   * @param {Object} primary_key
-   * @returns object
-   */
-  async get_doc(schema_name, primary_key = {}) {
-    this._check_ready_to_use();
-    let schema_doc = await this.get_schema(schema_name);
-    let s_doc = schema_doc["data"];
-    let doc_obj;
-    if (
-      s_doc["settings"]["primary_keys"] &&
-      s_doc["settings"]["primary_keys"].length > 0
-    ) {
-      let A = s_doc["settings"]["primary_keys"];
-      let search_criteria = { schema: schema_name };
-      A.forEach((itm) => {
-        if (!primary_key[itm]) {
-          throw new Error(
-            "Incomplete Primary key set. Required field(s) : " + A.join(",")
-          );
+/**
+ * Retrieves special types of documents from the database, such as schema documents or blank documents 
+ * for a given schema. It handles system-related data and throws errors for invalid document types 
+ * or if the document is not found.
+ *
+ * @param {String} special_doc_type - The type of special document to fetch. Supported types include:
+ *                                    - 'schema': Retrieves a schema document based on the criteria provided.
+ * @param {Object} [criteria={}] - Criteria used to search for the special document. 
+ *                                 For example, to search for a schema, the criteria should include the name.
+ *
+ * @throws {ValidationError} Throws if the `special_doc_type` is not recognized.
+ * @throws {DocNotFoundError} Throws if the requested document is not found in the database.
+ *
+ * @returns {Object} The fetched special document based on the type and criteria.
+ */
+  async get(special_doc_type,criteria={}){
+    // this method returns special types of documents such as schema doc, or a blank doc for a given schema and other system related things 
+    const fetch_docs = {
+      schema:async (criteria)=>{
+        let schemaSearch = await this.db_api.search({
+          selector: { schema: "schema", "data.name": criteria.name },
+        });
+        // console.log(schemaSearch)
+        if (schemaSearch.docs.length == 0) {
+          throw new DocNotFoundError(BeanBagDB.error_codes.schema_not_found);
         }
-        search_criteria["data." + itm] = primary_key[itm];
-      });
-      let s = await this.search({ selector: search_criteria });
-      doc_obj = s.docs[0];
-    } else {
-      let s = await this.search({ selector: { schema: schema_name } });
-      if (s.docs.length > 1) {
-        throw new Error(
-          "Invalid schema. At least one primary key must be defined or set the singleRecord option to true. "
-        );
+        return schemaSearch.docs[0];
       }
-      doc_obj = s.docs[0];
     }
-    doc_obj = this._decrypt_doc(s_doc, doc_obj);
-    return doc_obj;
+    if(Object.keys(fetch_docs).includes(special_doc_type)){
+      let data = await fetch_docs[special_doc_type](criteria)
+      return data
+    }else{
+      throw new ValidationError("Invalid special doc type. Must be : "+Object.keys(fetch_docs).join(","))
+    }
   }
-
 
   async load_plugin(plugin_name, plugin_module) {
     this._check_ready_to_use();
     this.plugins[plugin_name] = {};
     for (let func_name in plugin_module) {
       if (typeof plugin_module[func_name] == "function") {
-        this.plugins[plugin_name][func_name] = plugin_module[func_name].bind(
-          null,
-          this
-        );
+        this.plugins[plugin_name][func_name] = plugin_module[func_name].bind(null,this)
       }
     }
     // Check if the plugin has an on_load method and call it
@@ -626,10 +634,15 @@ export class BeanBagDB {
 //////////////// Internal methods ////////////////////////
 //////////////////////////////////////////////////////////
 
-  /**
-   * @private
-   * @returns {number}
-   */
+/**
+ * Retrieves the current version of the system by summing up the version numbers 
+ * of all system-defined schemas.
+ *
+ * @private
+ * @returns {number} The total sum of the version numbers of all system-defined schemas.
+ *
+ * @throws {Error} Throws if there is an issue calculating the sum of version numbers.
+ */
   _get_current_version() {
     // current version is the sum of versions of all system defined schemas
     let sum = sys_sch.schema_schema.version;
@@ -681,7 +694,7 @@ export class BeanBagDB {
   }
 
   /**
-   * Generates a blank schema doc ready to be inserted to the database. Note that no validation is done. This is for internal use
+   * Generates a blank schema doc ready to be inserted to the database. This is for internal use
    * @private
    * @param {string} schema_name
    * @param {Object} schema_object
@@ -702,19 +715,17 @@ export class BeanBagDB {
    * @param {Object} doc_obj
    * @returns {Object}
    */
-  _decrypt_doc(schema_obj, doc_obj) {
-    if (
-      schema_obj.settings["encrypted_fields"] &&
-      schema_obj.settings["encrypted_fields"].length > 0
-    ) {
-      schema_obj.settings["encrypted_fields"].forEach((itm) => {
-        doc_obj.data[itm] = this.utils.decrypt(
-          doc_obj.data[itm],
-          this.encryption_key
-        );
-      });
+  async _decrypt_doc(schema_obj, doc_obj) {
+    try {
+      for (let itm of schema_obj.settings["encrypted_fields"]) {
+        doc_obj.data[itm] = await this.utils.decrypt(doc_obj.data[itm], this.encryption_key);
+      }
+      return { ...doc_obj };  
+    } catch (error) {
+      console.log(error)
+      throw new EncryptionError([{message:error.message}])
     }
-    return { ...doc_obj };
+    
   }
 
   /**
@@ -724,20 +735,18 @@ export class BeanBagDB {
    * @param {Object} doc_obj
    * @returns {Object}
    */
-  _encrypt_doc(schema_obj, doc_obj) {
-    if (
-      schema_obj.settings["encrypted_fields"] &&
-      schema_obj.settings["encrypted_fields"].length > 0
-    ) {
-      // console.log(schema_obj,doc_obj)
-      schema_obj.settings["encrypted_fields"].forEach((itm) => {
-        doc_obj.data[itm] = this.utils.encrypt(
-          doc_obj.data[itm],
-          this.encryption_key
-        );
-      });
+  async _encrypt_doc(schema_obj, doc_obj) {
+    try {
+      if (schema_obj.settings["encrypted_fields"].length > 0) {
+        // console.log(schema_obj,doc_obj)
+        for (let itm of schema_obj.settings["encrypted_fields"]) {
+          doc_obj.data[itm] = await this.utils.encrypt(doc_obj.data[itm], this.encryption_key);
+        }
+      }
+      return { ...doc_obj };  
+    } catch (error) {
+      throw new EncryptionError([{message:error.message}])
     }
-    return { ...doc_obj };
   }
 
   /**
@@ -762,12 +771,8 @@ export class BeanBagDB {
    */
   async _insert_pre_checks(schema, data, meta = {}, settings = {}) {
     // schema search
-    let sch_search = await this.search({
-      selector: { schema: "schema", "data.name": schema },
-    });
-    if (sch_search.docs.length == 0) {
-      throw new Error("Invalid Schema");
-    }
+    let sch_search = await this.search({selector: { schema: "schema", "data.name": schema }})
+    if (sch_search.docs.length == 0) {throw new DocCreationError(`The schema "${schema}" does not exists`)}
     let schemaDoc = sch_search.docs[0]["data"];
     // validate data
     this.util_validate_data(schemaDoc.schema, data);
@@ -777,13 +782,8 @@ export class BeanBagDB {
 
     // duplicate meta.link check
     if (meta.link) {
-      let link_search = await this.search({
-        selector: { "meta.link": meta.link },
-      });
-      console.log(link_search);
-      if (link_search.docs.length > 0) {
-        throw new Error("This link already exists in the database");
-      }
+      let link_search = await this.search({selector: { "meta.link": meta.link }})
+      if (link_search.docs.length > 0) {throw new DocCreationError(`Document with the link "${meta.link}" already exists in the Database.`)}
     }
 
     // special checks for special docs
@@ -793,36 +793,32 @@ export class BeanBagDB {
       this.util_validate_schema_object(data);
     }
     // @TODO : check if single record setting is set to true
-
+    //console.log(schemaDoc)
     // duplicate check
-    if (
-      schemaDoc.settings["primary_keys"] &&
-      schemaDoc.settings["primary_keys"].length > 0
-    ) {
+    if (schemaDoc.settings["primary_keys"].length > 0) {
       let primary_obj = { schema: schema };
-      schemaDoc.settings["primary_keys"].map((ky) => {
-        primary_obj["data." + ky] = data[ky];
-      });
-      console.log(primary_obj);
+      schemaDoc.settings["primary_keys"].map((ky) => {primary_obj["data." + ky] = data[ky];});
       let prim_search = await this.search({ selector: primary_obj });
-      console.log(prim_search);
       if (prim_search.docs.length > 0) {
-        throw new Error("Doc already exists");
+        throw new DocCreationError(`Document with the given primary key (${schemaDoc.settings["primary_keys"].join(",")}) already exists in the schema "${schema}"`);
       }
     }
     // encrypt if required
     let new_data = { ...data };
-    if (
-      schemaDoc.settings["encrypted_fields"] &&
-      schemaDoc.settings["encrypted_fields"].length > 0
-    ) {
-      schemaDoc.settings["encrypted_fields"].forEach((itm) => {
-        new_data[itm] = this.utils.encrypt(data[itm], this.encryption_key);
-      });
+    if (schemaDoc.settings["encrypted_fields"].length > 0) {
+      // todo test if encryption is successful 
+      for (let itm of schemaDoc.settings["encrypted_fields"]) {
+        new_data[itm] = await this.utils.encrypt(data[itm], this.encryption_key);
+      }
     }
+
     // generate the doc object for data
     let doc_obj = this._get_blank_doc(schema);
     doc_obj["data"] = new_data;
+    // if meta exists
+    if(meta){
+      doc_obj["meta"] = {...doc_obj["meta"],...meta};
+    }
     return doc_obj;
   }
 
@@ -830,16 +826,13 @@ export class BeanBagDB {
   ////// Utility methods /////////////////////////////////////////////////////////////////////////////
   ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-
   /**
    * Returns the current Unix timestamp in seconds.
    * divide by 1000 (Date.now gives ms) to convert to seconds. 1 s = 1000 ms
    * @private
    * @returns {number}
    */
-    util_get_now_unix_timestamp() {
-      return Math.floor(Date.now() / 1000);
-    }
+    util_get_now_unix_timestamp() {return Math.floor(Date.now() / 1000)}
 
   /**
    * Validates that the required fields are present in the provided object.
@@ -850,11 +843,7 @@ export class BeanBagDB {
    */
   util_check_required_fields(requiredFields, obj) {
     for (const field of requiredFields) {
-      if (!obj[field]) {
-        throw new ValidationError([
-          { message: `The field ${field} is required.` },
-        ]);
-      }
+      if (!obj[field]) {throw new ValidationError(`The field ${field} is required.`)}
     }
   }
 
@@ -890,13 +879,7 @@ export class BeanBagDB {
    * @throws {Error} If the data object does not conform to the schema
    */
   util_validate_data(schema_obj, data_obj) {
-    const { valid, validate } = this.utils.validate_schema(
-      schema_obj,
-      data_obj
-    );
-    //const ajv = new Ajv({code: {esm: true}})  // options can be passed, e.g. {allErrors: true}
-    //const validate = ajv.compile(schema_obj);
-    //const valid = validate(data_obj);
+    const { valid, validate } = this.utils.validate_schema(schema_obj,data_obj)
     if (!valid) {
       throw new ValidationError(validate.errors);
     }
@@ -932,15 +915,10 @@ export class BeanBagDB {
   util_validate_schema_object(schema_doc) {
     let errors = [{ message: "Schema validation errors " }];
     if (!schema_doc["schema"]["type"]) {
-      errors.push({
-        message:
-          "Schema must have the field schema.'type' which can only be 'object' ",
-      });
+      errors.push({message:"Schema must have the field schema.'type' which can only be 'object' "});
     } else {
       if (schema_doc["schema"]["type"] != "object") {
-        errors.push({
-          message: "The schema.'type' value  is invalid.Only 'object' allowed",
-        });
+        errors.push({message: "The schema.'type' value  is invalid.Only 'object' allowed",});
       }
     }
     if (!schema_doc["schema"]["properties"]) {
@@ -949,26 +927,18 @@ export class BeanBagDB {
       });
     } else {
       if (typeof schema_doc["schema"]["properties"] != "object") {
-        errors.push({
-          message:
-            "Invalid schema.properties. It must be an object and must have atleast one field inside.",
-        });
+        errors.push({message:"Invalid schema.properties. It must be an object and must have atleast one field inside.",});
       }
       if (Object.keys(schema_doc["schema"]["properties"]).length == 0) {
         errors.push({ message: "You must define at least one property" });
       }
     }
 
-    if (!schema_doc["schema"]["additionalProperties"]) {
-      errors.push({
-        message: "The schema.'additionalProperties' field is required",
-      });
+    if (!schema_doc["schema"].hasOwnProperty("additionalProperties")) {
+      errors.push({message: "The schema.'additionalProperties' field is required",});
     } else {
       if (typeof schema_doc["schema"]["additionalProperties"] != "boolean") {
-        errors.push({
-          message:
-            "Invalid schema.additionalProperties. It must be a boolean value",
-        });
+        errors.push({message:"Invalid schema.additionalProperties. It must be a boolean value",});
       }
     }
 
@@ -983,10 +953,7 @@ export class BeanBagDB {
       );
 
       if (!all_pk_exist) {
-        errors.push({
-          message:
-            "Primary keys invalid. All keys must be defined in the schema and must be non object",
-        });
+        errors.push({message:"Primary keys invalid. All keys must be defined in the schema and must be non object",});
       }
     }
 
@@ -996,63 +963,43 @@ export class BeanBagDB {
         (item) => allKeys.includes(item)
       );
       if (!all_ne_exist) {
-        errors.push({
-          message:
-            "Non editable fields invalid. All fields must be defined in the schema ",
-        });
+        errors.push({message:"Non editable fields invalid. All fields must be defined in the schema ",});
       }
     }
 
     if (schema_doc["settings"]["encrypted_fields"].length > 0) {
       // check if all keys belong to the schema and are only string
-      let all_enc_exist = schema_doc["settings"]["encrypted_fields"].every(
-        (item) =>
-          allKeys.includes(item) &&
-          schema_doc["schema"]["properties"][item]["type"] == "string"
-      );
+      let all_enc_exist = schema_doc["settings"]["encrypted_fields"].every((item) =>allKeys.includes(item) &&schema_doc["schema"]["properties"][item]["type"] == "string");
       if (!all_enc_exist) {
-        errors.push({
-          message:
-            "Invalid encrypted fields. All fields must be defined in the schema and must be string ",
-        });
+        errors.push({message:"Invalid encrypted fields. All fields must be defined in the schema and must be string ",});
       }
 
       // check : primary keys cannot be encrypted
-      let all_enc_no_pk = schema_doc["settings"]["encrypted_fields"].every(
-        (item) => !schema_doc["settings"]["primary_keys"].includes(item)
-      );
+      let all_enc_no_pk = schema_doc["settings"]["encrypted_fields"].every((item) => !schema_doc["settings"]["primary_keys"].includes(item));
       if (!all_enc_no_pk) {
-        errors.push({
-          message:
-            "Invalid encrypted fields.Primary key fields cannot be encrypted ",
-        });
+        errors.push({message:"Invalid encrypted fields.Primary key fields cannot be encrypted ",});
       }
     }
 
     /// cannot encrypt primary field keys
-    if (errors.length > 1) {
-      throw new ValidationError(errors);
-    }
+    if (errors.length > 1) {throw new ValidationError(errors)}
   }
 
-   /**
+/**
  * Generates a random link composed of four words from a predefined dictionary.
  *
  * The words are selected randomly, and the resulting link is formatted as 
  * a hyphen-separated string. This can be useful for creating link for documents.
  *
- * @returns {String} A hyphen-separated string containing four randomly 
+ * @returns {String} A hyphen-separated string containing three randomly 
  *                  selected words from the dictionary. For example: 
- *                  "banana-earth-kiwi-rain".
+ *                  "banana-earth-rain".
  *
  */
     util_generate_random_link() {
       // prettier-ignore
       const dictionary = ['rain', 'mars', 'banana', 'earth', 'kiwi', 'mercury', 'fuji', 'hurricane', 'matterhorn', 'snow', 'saturn', 'jupiter', 'peach', 'wind', 'pluto', 'apple', 'k2', 'storm', 'venus', 'denali', 'cloud', 'sunshine', 'mango', 'drizzle', 'pineapple', 'aconcagua', 'gasherbrum', 'apricot', 'neptune', 'fog', 'orange', 'blueberry', 'kilimanjaro', 'uranus', 'grape', 'storm', 'montblanc', 'lemon', 'chooyu', 'raspberry', 'cherry', 'thunder', 'vinson', 'breeze', 'elbrus', 'everest', 'parbat', 'makalu', 'nanga', 'kangchenjunga', 'lightning', 'cyclone', 'comet', 'asteroid', 'pomegranate', 'nectarine', 'clementine', 'strawberry', 'tornado', 'avalanche', 'andes', 'rockies', 'himalayas', 'pyrenees', 'carpathians', 'cascade', 'etna', 'vesuvius', 'volcano', 'tundra', 'whirlwind', 'iceberg', 'eclipse', 'zephyr', 'tropic', 'monsoon', 'aurora'];
-      return Array.from(
-        { length: 4 },
-        () => dictionary[Math.floor(Math.random() * dictionary.length)]
-      ).join("-");
+      return Array.from({ length: 3 },() => dictionary[Math.floor(Math.random() * dictionary.length)]).join("-");
     }
 }
 
@@ -1080,8 +1027,13 @@ export class ValidationError extends Error {
   constructor(errors = []) {
     // Create a message based on the list of errors
     //console.log(errors)
-    let error_messages = errors.map(item=>` ${(item.instancePath||" ").replace("/","")} ${item.message} `)
-    let message = `Validation failed with ${errors.length} error(s): ${error_messages.join(",")}`;
+    let error_messages 
+    if(Array.isArray(errors)){
+      error_messages = errors.map(item=>` ${(item.instancePath||" ").replace("/","")} ${item.message} `)
+    }else {
+      error_messages = [errors]
+    }
+    let message = `Validation failed with error(s): ${error_messages.join(",")}`;
     super(message);
     this.name = 'ValidationError';
     this.errors = errors;  // Store the list of errors
@@ -1103,7 +1055,12 @@ export class DocUpdateError extends Error {
  * @param {ErrorItem[]} [errors=[]] - An array of error objects, each containing details about validation failures.
  */
   constructor(errors=[]){
-    let error_messages  = errors.map(item=>`${item.message}`)
+    let error_messages 
+    if(Array.isArray(errors)){
+      error_messages = errors.map(item=>` ${(item.instancePath||" ").replace("/","")} ${item.message} `)
+    }else {
+      error_messages = [errors]
+    }
     let message = `Error in document update. ${error_messages.join(",")}`
     super(message)
     this.name = "DocUpdateError";
@@ -1116,7 +1073,7 @@ export class DocUpdateError extends Error {
  * 
  * @extends {Error}
  */
-export class DocInsertError extends Error {
+export class DocCreationError extends Error {
   /**
  * Custom error class for document insert errors.
  * 
@@ -1124,10 +1081,15 @@ export class DocInsertError extends Error {
  * @param {ErrorItem[]} [errors=[]] - An array of error objects, each containing details about validation failures.
  */
   constructor(errors=[]){
-    let error_messages  = errors.map(item=>`${item.message}`)
-    let message = `Error in document insert. ${error_messages.join(",")}`
+    let error_messages 
+    if(Array.isArray(errors)){
+      error_messages = errors.map(item=>` ${(item.instancePath||" ").replace("/","")} ${item.message} `)
+    }else {
+      error_messages = [errors]
+    }
+    let message = `Error in document creation. ${error_messages.join(",")}`
     super(message)
-    this.name = "DocInsertError";
+    this.name = "DocCreationError";
     this.errors = errors
   }
 }
@@ -1145,10 +1107,42 @@ export class DocNotFoundError extends Error {
  * @param {ErrorItem[]} [errors=[]] - An array of error objects, each containing details about validation failures.
  */
   constructor(errors=[]){
-    let error_messages  = errors.map(item=>`${item.message}`)
+    let error_messages 
+    if(Array.isArray(errors)){
+      error_messages = errors.map(item=>` ${(item.instancePath||" ").replace("/","")} ${item.message} `)
+    }else {
+      error_messages = [errors]
+    }
     let message = `Error in fetching document. Criteria : ${error_messages.join(",")}`
     super(message)
     this.name = "DocNotFoundError";
     this.errors = errors
   }
+}
+
+
+/**
+ * Custom error class for encryption error.
+ * 
+ * @extends {Error}
+ */
+export class EncryptionError extends Error {
+  /**
+* Custom error class for document not found errors.
+* 
+* @extends {Error}
+* @param {ErrorItem[]} [errors=[]] - An array of error objects, each containing details about validation failures.
+*/
+constructor(errors=[]){
+  let error_messages 
+    if(Array.isArray(errors)){
+      error_messages = errors.map(item=>` ${(item.instancePath||" ").replace("/","")} ${item.message} `)
+    }else {
+      error_messages = [errors]
+    }
+  let message = `Error in encryption/decryption of data  : ${error_messages.join(",")}`
+  super(message)
+  this.name = "EncryptionError";
+  this.errors = errors
+}
 }
