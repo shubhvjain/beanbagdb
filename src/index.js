@@ -548,7 +548,7 @@ export class BeanBagDB {
   async delete(criteria) {
     this._check_ready_to_use();
     let doc = await this.read(criteria)
-    const delete_blocked = ["schema","setting",""]
+    const delete_blocked = ["schema","setting","key"]
     if (delete_blocked.includes(doc.schema)){
       throw new Error(`Deletion of ${doc.schema} doc is not support yet.`)
     }
@@ -597,6 +597,7 @@ export class BeanBagDB {
   async get(special_doc_type,criteria={}){
     // this method returns special types of documents such as schema doc, or a blank doc for a given schema and other system related things 
     const fetch_docs = {
+      // to return schema object for the given name
       schema:async (criteria)=>{
         let schemaSearch = await this.db_api.search({
           selector: { schema: "schema", "data.name": criteria.name },
@@ -606,6 +607,30 @@ export class BeanBagDB {
           throw new DocNotFoundError(BeanBagDB.error_codes.schema_not_found);
         }
         return schemaSearch.docs[0];
+      },
+      // schema list 
+      schema_list:async (criteria)=>{
+        let schemaSearch = await this.db_api.search({
+          selector: { schema: "schema" },
+        });
+        // console.log(schemaSearch)
+        if (schemaSearch.docs.length == 0) {
+          throw new DocNotFoundError(BeanBagDB.error_codes.schema_not_found);
+        }else{
+          let schemas = []
+          schemaSearch.docs.map(doc=>{
+            schemas.push({
+              name: doc.data.name,
+              version: doc.data.version,
+              system_defined : doc.data.system_generated,
+              description: doc.data.description,
+              link: doc.meta.link,
+              _id:doc._id
+            })
+          })
+          return schemas
+        }
+        
       }
     }
     if(Object.keys(fetch_docs).includes(special_doc_type)){
