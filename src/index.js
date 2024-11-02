@@ -344,6 +344,7 @@ export class BeanBagDB {
   async create(schema, data, meta = {}, settings = {}) {
     this._check_ready_to_use();
     if(!schema){throw new DocCreationError(`No schema provided`)}
+    if(schema=="setting_edge"){throw new DocCreationError("This type of record can only be created through the create_edge api")}
     if(Object.keys(data).length==0){throw new DocCreationError(`No data provided`)}
     try {
       let doc_obj = await this._insert_pre_checks(schema, data,meta, settings);
@@ -440,7 +441,6 @@ export class BeanBagDB {
  * - Retrieves the document based on the provided search criteria.
  * - Checks the revision ID to detect potential conflicts. (To be implemented: behavior when the `rev_id` does not match).
  * - Validates editable fields against `schema.settings.editable_fields` (or allows editing of all fields if not specified).
- * - Performs primary key conflict checks if multiple records are allowed (`single_record == false`).
  * - Encrypts fields if encryption is required by the schema settings.
  * - Updates the `meta` fields (such as `updated_on` and `updated_by`) and saves the updated document to the database.
  *
@@ -448,7 +448,7 @@ export class BeanBagDB {
  * @returns {Object} The result of the document update operation.
  *
  * **Errors**:
- * - Throws an error if a document with the same primary keys already exists (and `single_record == false`).
+ * - Throws an error if a document with the same primary keys already exists .
  * - Throws a `DocUpdateError` if a primary key conflict is detected during the update.
  * 
  * @throws {DocUpdateError} - If a document with conflicting primary keys already exists.
@@ -654,6 +654,119 @@ export class BeanBagDB {
       await this.plugins[plugin_name].on_load();
     }
   }
+
+///////////////////////////////////////////////////////////
+//////////////// simple directed graph ////////////////////////
+//////////////////////////////////////////////////////////
+
+async create_edge(node1,node2,edge_name,edge_label=""){
+  this._check_ready_to_use();
+  if(!edge_name){throw new ValidationError("edge_name required")}
+  if(Object.keys(node1)==0){throw new ValidationError("node1 required")}
+  if(Object.keys(node2)==0){throw new ValidationError("node2 required")}
+ 
+  let n1 = await this.read(node1)
+  let n2 = await this.read(node2)
+  let edges_constraint
+
+  try {
+    let d  = await this.read({schema:"setting_edge_constraint",data:{name:edge_name}})
+    edges_constraint = d["doc"]["data"]
+    let errors = [] 
+    let node1id = n1.doc._id
+    let node2id = n2.doc._id
+    let val_check = this._check_nodes_edge(edges_constraint.node1,edges_constraint.node2,n1.doc.schema,n2.doc.schema)
+
+    if (val_check.valid){
+      if(val_check.swapped){
+        // swapping required
+        node1id = n2.doc._id
+        node2id = n1.doc._id
+      }
+    }else{
+      this.errors.push("Invalid nodes.This config of nodes not allowed")
+    }
+        
+    let records = await this.search({selector:{schema:"system_edge","data.edge_name":edge_name}})
+
+    if(edges_constraint.max_from_node1!=-1){
+      let filter1 = records.docs.filter((itm)=>itm.data.node1==node1id)
+      if(filter1.length>=edges_constraint.max_from_node1){
+        errors.push("max limit reached")
+      }
+    }
+
+    if(edges_constraint.max_to_node2!=-1){
+      let filter2 = records.docs.filter((itm)=>itm.data.node2==node2id)
+      if(filter1.length>=edges_constraint.max_from_node1){
+        errors.push("max limit reached")
+      }
+    }
+    
+    if(errors.length==0){
+      let edge = await this.create("system_edge",{node1: node1id , node2: node1id ,edge_name:edge_name })
+      return edge
+    }else{
+      throw new RelationError(errors)
+    }
+    
+  } catch (error) {
+    if(error instanceof DocNotFoundError){
+      let doc = {node1:"*",node2:"*",name:edge_name,label:edge_label}
+      let new_doc = await this.create("system_edge_constraint",doc) 
+      let edge = await this.create("system_edge",{node1: n1.doc._id,node2: n2.doc._id,edge_name:edge_name })
+      return edge
+    }else{
+      throw error
+    }  
+  }
+}
+
+_check_node_schema_match(rule, schema) {
+  /**
+   * Check if the schema matches the rule. The rule can be:
+   * - "*" for any schema
+   * - "*-n1,n2" for all schemas except n1 and n2
+   * - "specific_schema" or "schema1,schema2" for specific schema matches
+   */
+  if (rule === "*") {
+    return true;
+  }
+  
+  if (rule.startsWith("*-")) {
+    // Exclude the schemas listed after "*-"
+    const exclusions = rule.slice(2).split(",");
+    return !exclusions.includes(schema);
+  }
+  
+  // Otherwise, check if schema matches the specific rule (comma-separated for multiple allowed schemas)
+  const allowedSchemas = rule.split(",");
+  return allowedSchemas.includes(schema);
+}
+
+_check_nodes_edge(node1Rule, node2Rule, schema1, schema2) {
+  /**
+   * Check if the edge between schema1 (node1) and schema2 (node2) is valid based on the rules
+   * node1Rule and node2Rule. Also checks if the nodes should be swapped.
+   * 
+   */
+  // Check if schema1 matches node1Rule and if schema2 matches node2Rule
+  const matchesNode1 = this._check_node_schema_match(node1Rule, schema1);
+  const matchesNode2 = this._check_node_schema_match(node2Rule, schema2);
+  
+  // Check if schema1 matches node2Rule and schema2 matches node1Rule (for swapping condition)
+  const matchesSwappedNode1 = this._check_node_schema_match(node2Rule, schema1);
+  const matchesSwappedNode2 = this._check_node_schema_match(node1Rule, schema2);
+
+  // If the schemas match their respective rules (node1 and node2), the edge is valid
+  if (matchesNode1 && matchesNode2) { return { valid: true, swapped: false }}
+  
+  // If swapping makes it valid, indicate that the nodes should be swapped
+  if (matchesSwappedNode1 && matchesSwappedNode2) { return { valid: true, swapped: true }}
+  // Otherwise, the edge is invalid
+  return { valid: false, swapped: false };
+}
+
 
 ///////////////////////////////////////////////////////////
 //////////////// Internal methods ////////////////////////
@@ -1168,6 +1281,31 @@ constructor(errors=[]){
   let message = `Error in encryption/decryption of data  : ${error_messages.join(",")}`
   super(message)
   this.name = "EncryptionError";
+  this.errors = errors
+}
+}
+
+/**
+ * Custom error class for relation error.
+ * 
+ * @extends {Error}
+ */
+export class RelationError extends Error {
+  /**
+* 
+* @extends {Error}
+* @param {ErrorItem[]} [errors=[]] - An array of error objects, each containing details about validation failures.
+*/
+constructor(errors=[]){
+  let error_messages 
+    if(Array.isArray(errors)){
+      error_messages = errors.map(item=>` ${(item.instancePath||" ").replace("/","")} ${item.message} `)
+    }else {
+      error_messages = [errors]
+    }
+  let message = `Error in relation of the simple digraph : ${error_messages.join(",")}`
+  super(message)
+  this.name = "RelationError";
   this.errors = errors
 }
 }
