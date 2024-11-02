@@ -68,12 +68,6 @@ export const schema_schema = {
             },
             maxItems: 50,
             description:"Once set, all the data in this field will be encrypted before storing it in the database. Encryption key must be provided during the time of BeanBagDB initialization and must be managed by the user as it is NOT stored in the database"
-          },
-          single_record: {
-            type: "boolean",
-            default: false,
-            description:
-              "If set, only a single records with this schema will be allowed to insert in the database",
           }
         },
         required :["primary_keys","non_editable_fields","encrypted_fields"]
@@ -83,7 +77,7 @@ export const schema_schema = {
   },
   settings: {
     primary_keys: ["name"],
-    editable_fields: ["schema", "settings","description"],
+    non_editable_fields:[],
     encrypted_fields:[]
   },
 };
@@ -91,9 +85,9 @@ export const schema_schema = {
 export const system_schemas = {
   keys: {
     system_generated:true,
-    version:0.5,
+    version:0.52,
     description:"To store user defined key. this can include anything like API tokens etc. There is a special method to fetch this. The values are encrypted",
-    name: "system_keys",
+    name: "system_key",
     schema: {
       type: "object",
       additionalProperties: true,
@@ -123,15 +117,14 @@ export const system_schemas = {
     settings: {
       primary_keys: ["name"],
       encrypted_fields:["value"],
-      non_editable_fields:[],
-      single_record: false
+      non_editable_fields:[]
     },
   },
   settings: {
     version:0.5,
     system_generated:true,
     description:"The system relies on these settings for proper functioning or enabling optional features.",
-    name: "system_settings",
+    name: "system_setting",
     schema: {
       required:["name","value"],
       type: "object",
@@ -157,39 +150,115 @@ export const system_schemas = {
     settings: {
       primary_keys: ["name"],
       non_editable_fields: ["name"],
-      encrypted_fields:[],
-      single_record:false
+      encrypted_fields:[]
+    },
+  },
+  edges_constraints:{
+    name:"system_edge_constraint",
+    system_generated:true,
+    version:0.5,
+    description: "To define edge constraints for simple directed graph of records.",
+    schema:{
+      type: "object",
+      additionalProperties: true,
+      required:["node1","node2","edge_type"],
+      properties: {
+        node1: {
+          type: "string",
+          minLength: 1,
+          maxLength: 500,
+          pattern: "^(\\*|(\\*-[a-zA-Z0-9_-]+)(,[a-zA-Z0-9_-]+)*|[a-zA-Z0-9_-]+(,[a-zA-Z0-9_-]+)*)$"
+        },
+        node2: {
+          type: "string",
+          minLength: 1,
+          maxLength: 500,
+          pattern: "^(\\*|(\\*-[a-zA-Z0-9_-]+)(,[a-zA-Z0-9_-]+)*|[a-zA-Z0-9_-]+(,[a-zA-Z0-9_-]+)*)$"
+        },
+        name:{
+          type: "string",
+          minLength: 1,
+          maxLength: 500,
+          pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
+        },
+        label:{
+          type: "string",
+          maxLength: 500,
+        },
+        note:{
+          type: "string",
+          maxLength: 5000,
+        },
+        max_from_node1:{
+          type:"number",
+          default: -1,
+        },
+        max_to_node2:{
+          type:"number",
+          default: -1,
+        }
+      }
+    },
+    settings: {
+      primary_keys: ["name"],
+      non_editable_fields:["name"],
+      encrypted_fields:[]
+    },
+  },
+  edges:{
+    name:"system_edge",
+    system_generated:true,
+    version:0.5,
+    description: "To define edges in the simple directed graph of records.",
+    schema:{
+      type: "object",
+      additionalProperties: true,
+      required:["node1","node2","edge_type"],
+      properties: {
+        node1: {
+          type: "string",
+        },
+        node2: {
+          type: "string",
+        },
+        edge_name:{
+          type: "string",
+        }
+      }
+    },
+    settings: {
+      primary_keys: ["node1","node2","edge_type"],
+      non_editable_fields:["edge_type"],
+      encrypted_fields:[]
+    },
+  },
+  media:{
+    name:"system_media",
+    system_generated:true,
+    version:0.5,
+    description: "To store images as Base64",
+    schema:{
+      type: "object",
+      additionalProperties: true,
+      required:["imageBase64","caption","source"],
+      properties: {
+        imageBase64: {
+          type: "string",
+        },
+        caption: {
+          type: "string",
+        },
+        source:{
+          type: "string",
+        }
+      }
+    },
+    settings: {
+      primary_keys: ["caption"],
+      non_editable_fields:[],
+      encrypted_fields:[]
     },
   }
-  // ,
-  // edges:{
-  //   name:"edges",
-  //   description:"To relate one document to another.Labels can be configured using the db_network setting document.This stores edges of a simple directed graph",
-  //   schema:{
-  //     required:["graph","node1","node2","label"],
-  //     type:"object",
-  //     additionalProperties: false,
-  //     properties : {
-  //       graph:{
-  //         type:"string",
-  //         minLength:3,
-  //         default:"default",
-  //         maxLength:100,
-  //         description:"Name of the graph in which this edge is being added. This is managed by the db_network setting "
-  //       },
-  //       node1:{
-  //         type:"string",
-  //         description:"the source of this directed edge. this must be a valid document id."
-  //       }
-  //     }
-  //   },
-  //   settings :{
-  //     primary_key:["graph","node1","node2","label"],
-  //     non_editable_fields:["node1","node2","graph"],
-  //     encrypted_fields:[],
-  //     single_record:false
-  //   }
-  // }
 };
 
 // this is not stored in the DB. only for validating the metadata during doc update

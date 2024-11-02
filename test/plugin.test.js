@@ -19,15 +19,12 @@ let database; // this is the global db object
 
 describe("Testing plugin load", async () => {
   
-
   before(async () => {
     let doc_obj = get_pdb_doc("test_database_30", "qwertyuiopaqwsde1254");
     database = new BeanBagDB(doc_obj);
     await database.ready(); // Ensure the database is ready before running tests
     console.log("Ready for more tests...");
   });
-  
-   
 
   it('successfully loads the plugin', async () => {
     try {
@@ -41,10 +38,10 @@ describe("Testing plugin load", async () => {
 
   it('successfully runs the loaded the plugin method', async () => {
     try {
-      
-      let command = await database["txtcmd"].parse("new/system_keys")
-      console.log(command)
-      assert (1 ==2) 
+      //await database.load_plugin("txtcmd",text_command)
+      let command = await database.plugins["txtcmd"].parse("new/system_keys")
+      //console.log(command)
+      assert (command.valid ==true) 
     } catch (error) {
       console.log(error)
       throw error
