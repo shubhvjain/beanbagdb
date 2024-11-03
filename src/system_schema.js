@@ -2,7 +2,7 @@ export const schema_schema = {
   name: "schema",
   description:"Meta-schema or the schema for defining other schemas",
   system_generated:true,
-  version:0.5,
+  version:0.56,
   schema: {
     type: "object",
     additionalProperties: false,
@@ -85,7 +85,7 @@ export const schema_schema = {
 export const system_schemas = {
   keys: {
     system_generated:true,
-    version:0.52,
+    version:0.53,
     description:"To store user defined key. this can include anything like API tokens etc. There is a special method to fetch this. The values are encrypted",
     name: "system_key",
     schema: {
@@ -110,7 +110,6 @@ export const system_schemas = {
           type: "string",
           minLength: 1,
           maxLength: 5000,
-          pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
         },
       },
     },
@@ -244,6 +243,9 @@ export const system_schemas = {
       properties: {
         imageBase64: {
           type: "string",
+          "media": {
+            "binaryEncoding": "base64"
+          }
         },
         caption: {
           type: "string",
@@ -264,6 +266,7 @@ export const system_schemas = {
 // this is not stored in the DB. only for validating the metadata during doc update
 export const editable_metadata_schema = {
   additionalProperties: false,
+  type:"object",
   properties:{
     tags:{
       type:"array",

@@ -916,7 +916,10 @@ _check_nodes_edge(node1Rule, node2Rule, schema1, schema2) {
     this.util_validate_data(schemaDoc.schema, data);
 
     // validate meta
-    this.util_validate_data(sys_sch.editable_metadata_schema, meta);
+    if(Object.keys.length>0){
+      this.util_validate_data(sys_sch.editable_metadata_schema, meta)
+    }
+    
 
     // duplicate meta.link check
     if (meta.link) {
