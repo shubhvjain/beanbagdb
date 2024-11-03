@@ -114,7 +114,7 @@ export class BeanBagDB {
    *
    * This method performs the following actions:
    * - Pings the database.
-   * - Searches the database for the `system_settings.beanbagdb_version` document.
+   * - Searches the database for the `system_setting.beanbagdb_version` document.
    * - Sets the class state as active if the version matches the current BeanBagDB version.
    * - If the version does not match, calls `initialize()` to set up the database to the latest version.
    * @todo Code to ping the DB and throw Connection error if failed to connect
@@ -123,17 +123,22 @@ export class BeanBagDB {
    */
   async ready() {
     // TODO Ping db
+    console.log("running ready....")
     let version_search = await this.db_api.search({
-      selector: { schema: "system_settings", "data.name": "beanbagdb_version" },
-    });
+      selector: { schema: "system_setting", "data.name": "beanbagdb_system" },
+    })
+    //console.log(version_search)
     if (version_search.docs.length > 0) {
       let doc = version_search.docs[0];
-      this.active = doc["data"]["value"] == this._version;
-      this.meta.beanbagdb_version_db = doc["data"]["value"];
+      //console.log(doc)
+      this.active = doc["data"]["value"]["version"] == this._version;
+      this.meta.beanbagdb_version_db = doc["data"]["value"]["version"];
     }
     if (this.active) {
       console.log("Ready");
     } else {
+      console.log("Not ready. Init required")
+      //throw new Error("Initialization required")
       await this.initialize();
     }
   }
@@ -155,81 +160,132 @@ export class BeanBagDB {
    */
   async initialize() {
     // this works on its own but is usually called by ready automatically if required
-
     // check for schema_scehma : if yes, check if latest and upgrade if required, if no create a new schema doc
-    let logs = ["init started"];
     try {
-      let schema = await this.get("schema",{name:"schema"});
-      if (schema["data"]["version"] != sys_sch.schema_schema.version) {
-        logs.push("old schema_schema v " + schema["data"]["version"]);
-        let full_doc = await this.db_api.get(schema["_id"]);
-        full_doc["data"] = { ...sys_sch.schema_schema };
-        full_doc["meta"]["updated_on"] = this.util_get_now_unix_timestamp();
-        await this.db_api.update(full_doc);
-        logs.push("new schema_schema v " + sys_sch.schema_schema.version);
-      }
+      let app_data = await this.initialize_app(sys_sch.default_app)
+      console.log(app_data)
+      this.meta.beanbagdb_version_db = this._version;
+      this.active = true;
+      return app_data      
     } catch (error) {
-      // console.log(error);
-      if (error instanceof DocNotFoundError) {
-        // inserting new schema_schema doc
-        let schema_schema_doc = this._get_blank_doc("schema");
-        schema_schema_doc.data = sys_sch.schema_schema;
-        await this.db_api.insert(schema_schema_doc);
-        logs.push("init schema_schema v " + sys_sch.schema_schema.version);
-      }
+      console.log("Error in initializing instance")
+      console.log(error)
+      throw error
     }
 
-    let keys = Object.keys(sys_sch.system_schemas);
-    for (let index = 0; index < keys.length; index++) {
-      const schema_name = sys_sch.system_schemas[keys[index]]["name"];
-      const schema_data = sys_sch.system_schemas[keys[index]];
+  }
+
+  async initialize_app(app_data){
+    // app_data : meta(name,description), schemas[] , default_records:[]
+    // TODO check if add_data is valid
+    // calculate the app_version 
+    let latest_version = 0
+    app_data.schemas.map(sch=>{latest_version = latest_version + sch.version})
+    app_data.records.map(sch=>{latest_version = latest_version + sch.version})
+
+
+    // check if app setting record exists 
+    let version_search = await this.db_api.search({
+      selector: { schema: "system_setting", "data.name": app_data.meta.name },
+    })
+
+    let update_required = true 
+    let doc 
+    if (version_search.docs.length > 0) {
+      doc = version_search.docs[0];
+      if(doc["data"]["value"]["version"] == latest_version){
+        update_required = false
+      }
+    }
+    
+    // if no update required return the document 
+    if(!update_required){return doc}
+    // if version is latest no additional steps required
+    // version mismatch => update all docs
+
+    let text = `Initializing ${app_data.meta.name} app to v.${latest_version}`
+    let steps = ["update started"]
+
+    for (let index = 0; index < app_data.schemas.length; index++) {
+      const schema_name = app_data.schemas[index]["name"];
+      const schema_data = app_data.schemas[index]
+      steps.push(`checking.${schema_name}`)
       try {
         // console.log(schema_name)
         let schema1 = await this.get("schema",{name:schema_name}) 
         if (schema1["data"]["version"] != schema_data.version) {
-          logs.push("old " + schema_name + " v " + schema1["data"]["version"]);
+          steps.push(`old.${schema_name}.v.${schema1["data"]["version"]}`);
           let full_doc = await this.db_api.get(schema1["_id"]);
           full_doc["data"] = { ...schema_data };
           full_doc["meta"]["updated_on"] = this.util_get_now_unix_timestamp();
+          console.log(full_doc)
           await this.db_api.update(full_doc);
-          logs.push("new " + schema_name + " v " + schema_data.version);
+          
+          steps.push(`new.${schema_name}.v=${schema_data.version}`);
+        }else{
+          steps.push(`${schema_name}.v.${schema1["data"]["version"]}=latest`)
         }
       } catch (error) {
         // console.log(error);
         if (error instanceof DocNotFoundError) {
           // inserting new schema doc
-          let new_schema_doc = this._get_blank_schema_doc(
-            "schema",
-            sys_sch.schema_schema["schema"],
-            schema_data
-          );
-          await this.db_api.insert(new_schema_doc);
-          logs.push("init " + schema_name + " v " + schema_data.version);
+          if(schema_name=="schema"&& app_data.meta.name=="beanbagdb_system"){
+            // this is to initialize the system schema
+            let schema_schema_doc = this._get_blank_doc("schema");
+            schema_schema_doc.data = schema_data;
+            //console.log(schema_schema_doc)
+            await this.db_api.insert(schema_schema_doc);
+          }else{
+            let system_schema = sys_sch.default_app.schemas[0]["schema"]
+            let new_schema_doc = this._get_blank_schema_doc(
+              "schema",
+              system_schema,
+              schema_data
+            );
+            await this.db_api.insert(new_schema_doc);
+          }
+          steps.push(`init.${schema_name}.v=${schema_data.version}`);
+        }else{
+          steps.push(`${schema_name}.error.message : ${error.message} `);
         }
       }
     }
-    // store the logs in the log_doc ,  generate it for the first time
-    // console.log(logs)
-    if (logs.length > 1) {
-      // version needs to be updated in the object as well as settings and must be logged
-      logs.push("Init done");
 
-      await this.save_setting_doc("system_logs", {
-        value: { text: logs.join(","), added: this.util_get_now_unix_timestamp() },
-        on_update_array: "append",
-      });
-      await this.save_setting_doc("beanbagdb_version", {
-        value: this._version,
-      });
-
-      this.meta.beanbagdb_version_db = this._version;
-      this.active = true;
-      console.log(logs.join(","))
-    } else {
-      // no new updates were done
-      console.log("Database already up to date");
+    for (let index = 0; index < app_data.records.length; index++) {
+      const schema_name = app_data.records[index]["schema"]
+      const schema_data = app_data.records[index]["record"]
+      const record_title = app_data.records[index]["title"]
+      steps.push(`checking.records.${record_title}`)
+      try {
+        let new_doc = await this.create(schema_name,schema_data,app_data.records[index]["meta"])
+        steps.push(`doc.${record_title}.created`)
+      } catch (error) {
+        if(!(error instanceof DocCreationError)){
+          steps.push(`error in doc ${record_title} insertion: ${error.message}, doc: ${JSON.stringify(schema_data)}`)
+        }
+      }
     }
-  }
+
+    let app_doc = { ... app_data.meta, version: latest_version}
+    try {
+      await this.save_setting_doc(app_data.meta.name, {
+        value: app_doc,
+      });       
+    } catch (error) {
+      console.log(error)
+      console.log("error in storing/updating beanbagdb_version")
+    }
+
+    try {
+      let new_log_doc =  this._get_blank_doc("system_log")
+      new_log_doc.data = {text,data:{steps},time:this.util_get_now_unix_timestamp(),app:app_data.meta.name}
+      await this.db_api.insert(new_log_doc);
+      console.log("init logged")
+    } catch (error) {
+      console.log(error)
+    }
+    return app_doc
+  } 
 
 
   /**
@@ -263,7 +319,7 @@ export class BeanBagDB {
     }
 
     let doc_search = await this.db_api.search({
-      selector: { schema: "system_settings", "data.name": name },
+      selector: { schema: "system_setting", "data.name": name },
     });
     if (doc_search.docs.length > 0) {
       // doc already exists, check schema and update it : if it exists then it's value already exists and can be
@@ -293,7 +349,7 @@ export class BeanBagDB {
         new_val.value = [new_data.value];
         new_val.on_update_array = new_data.on_update_array;
       }
-      let new_doc = this._get_blank_doc("system_settings");
+      let new_doc = this._get_blank_doc("system_setting");
       new_doc["data"] = {
         name: name,
         ...new_val,
@@ -783,10 +839,10 @@ _check_nodes_edge(node1Rule, node2Rule, schema1, schema2) {
  */
   _get_current_version() {
     // current version is the sum of versions of all system defined schemas
-    let sum = sys_sch.schema_schema.version;
-    let keys = Object.keys(sys_sch.system_schemas).map((item) => {
-      sum = sum + sys_sch.system_schemas[item].version;
-    });
+    let sum = 0 
+    // sys_sch.schema_schema.version;
+    sys_sch.default_app.schemas.map((item) => {sum = sum + item.version})
+    sys_sch.default_app.records.map((item) => {sum = sum + item.version})
     if (sum == NaN) {
       throw Error("Error in system schema version numbers");
     }
