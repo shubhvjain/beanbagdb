@@ -162,7 +162,7 @@ export class BeanBagDB {
     // this works on its own but is usually called by ready automatically if required
     // check for schema_scehma : if yes, check if latest and upgrade if required, if no create a new schema doc
     try {
-      let app_data = await this.initialize_app(sys_sch.default_app)
+      let app_data = await this.initialize_db(sys_sch.default_app)
       console.log(app_data)
       this.meta.beanbagdb_version_db = this._version;
       this.active = true;
@@ -175,7 +175,7 @@ export class BeanBagDB {
 
   }
 
-  async initialize_app(app_data){
+  async initialize_db(app_data){
     // app_data : meta(name,description), schemas[] , default_records:[]
     // TODO check if add_data is valid
     // calculate the app_version 
@@ -697,18 +697,35 @@ export class BeanBagDB {
     }
   }
 
+  /**
+   * To load a plugin in the current BeanBagDB instance.
+   * Plug_module has to be loaded manually first. It must export an object containing fields: `actions` and `schema`. 
+   * `actions` is an object of methods which can be called after loading the plugin. 
+   * `schema` is an array of JSON schemas that are required by the plugin. Every time a plugin is loaded, this list is schemas is verified. New updates are added automatically to the database and logged 
+   *  methods inside actions must be async and must have at least one parameter : `db_instance` which is assumed to be the current instance of the BeanBagDB object itself. They ideally must also return some value.
+   * @param {string} plugin_name 
+   * @param {object} plugin_module 
+   */
   async load_plugin(plugin_name, plugin_module) {
     this._check_ready_to_use();
     this.plugins[plugin_name] = {};
-    for (let func_name in plugin_module) {
-      if (typeof plugin_module[func_name] == "function") {
-        this.plugins[plugin_name][func_name] = plugin_module[func_name].bind(null,this)
+    //console.log(plugin_module)
+    if(plugin_module.actions){
+      for (let func_name in plugin_module.actions) {
+        if (typeof plugin_module.actions[func_name] == "function") {
+          this.plugins[plugin_name][func_name] = plugin_module.actions[func_name].bind(null,this)
+        }
       }
     }
-    // Check if the plugin has an on_load method and call it
-    if (typeof this.plugins[plugin_name].on_load === "function") {
-      await this.plugins[plugin_name].on_load();
+
+    if(plugin_module.schemas){
+      await this._upgrade_schema_in_bulk(plugin_module.schemas,true,`Updating ${plugin_name} plugin schemas`)
     }
+
+    // Check if the plugin has an on_load method and call it
+    // if (typeof this.plugins[plugin_name].on_load === "function") {
+    //   await this.plugins[plugin_name].on_load();
+    // }
   }
 
 ///////////////////////////////////////////////////////////
@@ -827,6 +844,65 @@ _check_nodes_edge(node1Rule, node2Rule, schema1, schema2) {
 ///////////////////////////////////////////////////////////
 //////////////// Internal methods ////////////////////////
 //////////////////////////////////////////////////////////
+
+
+async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgrade in bulk"){
+  // TODO add a check to now allow default system schema to be updated from this method
+
+  let steps = ["schema update started"]
+  let update_was_required = false
+  for (let index = 0; index < schemas.length; index++) {
+    const schema_name = schemas[index]["name"];
+    const schema_data = schemas[index]
+    steps.push(`checking.${schema_name}`)
+    try {
+      let schema1 = await this.get("schema",{name:schema_name}) 
+      if (schema1["data"]["version"] != schema_data.version) {
+        steps.push(`old.${schema_name}.v.${schema1["data"]["version"]}`);
+        let full_doc = await this.db_api.get(schema1["_id"]);
+        full_doc["data"] = { ...schema_data };
+        full_doc["meta"]["updated_on"] = this.util_get_now_unix_timestamp();
+        console.log(full_doc)
+        await this.db_api.update(full_doc);
+        steps.push(`new.${schema_name}.v=${schema_data.version}`);
+        update_was_required = update_was_required || true
+      }else{
+        steps.push(`${schema_name}.v.${schema1["data"]["version"]}=latest`)
+      }
+    } catch (error) {
+      // console.log(error);
+      if (error instanceof DocNotFoundError) {
+        // inserting new schema doc
+          let system_schema = sys_sch.default_app.schemas[0]["schema"]
+          let new_schema_doc = this._get_blank_schema_doc(
+            "schema",
+            system_schema,
+            schema_data
+          );
+          await this.db_api.insert(new_schema_doc);
+        
+        steps.push(`init.${schema_name}.v=${schema_data.version}`);
+        update_was_required = update_was_required || true
+      }else{
+        steps.push(`${schema_name}.error.message : ${error.message} `);
+      }
+    }
+  }
+  // console.log(JSON.stringify(steps))
+  // console.log(update_was_required)
+  if (update_was_required && log_upgrade){
+    // log it if asked 
+    try {
+      let new_log_doc =  this._get_blank_doc("system_log")
+      new_log_doc.data = {text:log_message,data:{steps},time:this.util_get_now_unix_timestamp()}
+      await this.db_api.insert(new_log_doc);      
+    } catch (error) {
+      console.log(error) 
+    }
+
+  }
+  return {update_was_required,logs:steps}
+}
 
 /**
  * Retrieves the current version of the system by summing up the version numbers 
