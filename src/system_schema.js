@@ -8,23 +8,26 @@ export const default_app = {
       name: "schema",
       description:"Meta-schema or the schema for defining other schemas",
       system_generated:true,
-      version:0.70,
+      version:0.80,
       schema: {
         type: "object",
         additionalProperties: false,
         properties: {
           system_generated:{
+            title:"System generated schema",
             type:"boolean",
             default:false
           },
           version: {
             type: "number",
+            title:"Version",
             minimum: 0,
             default: 1,
             description:"This is an optional field.To be used primarily for system schemas"
           }, 
           name: {
             type: "string",
+            title:"Name",
             minLength: 4,
             maxLength: 50,
             pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
@@ -32,12 +35,14 @@ export const default_app = {
           },
           description:{
             type:"string",
+            title:"About",
             minLength:0,
             maxLength:1000,
             description:"A small description of what  data in this schema stores."
           },
           schema: {
             type: "object",
+            title:"JSON Schema specification",
             additionalProperties: true,
             minProperties: 1,
             maxProperties: 50,
@@ -45,9 +50,11 @@ export const default_app = {
           },
           settings: {
             type: "object",
+            title:"Additional Settings",
             additionalProperties: true,
             properties: {
               primary_keys: {
+                title:"Primary key",
                 type: "array",
                 default: [],
                 items: {
@@ -58,6 +65,7 @@ export const default_app = {
               },
               non_editable_fields: {
                 type: "array",
+                title:"Non editable fields",
                 default: [],
                 items: {
                   type: "string",
@@ -68,23 +76,35 @@ export const default_app = {
               },
               encrypted_fields: {
                 type: "array",
+                title:"List of fields encrypted",
                 default: [],
                 items: {
                   type: "string",
                 },
                 maxItems: 50,
                 description:"Once set, all the data in this field will be encrypted before storing it in the database. Encryption key must be provided during the time of BeanBagDB initialization and must be managed by the user as it is NOT stored in the database"
+              },
+              display_fields: {
+                type: "array",
+                title:"List of fields to show in short view",
+                default: [],
+                items: {
+                  type: "string",
+                },
+                maxItems: 50,
+                description:"These fields will be used when a record is displayed in short"
               }
             },
             required :["primary_keys","non_editable_fields","encrypted_fields"]
           },
         },
-        required: ["name","description","schema", "settings"],
+        required: ["name","version","description","schema", "settings"],
       },
       settings: {
         primary_keys: ["name"],
         non_editable_fields:[],
-        encrypted_fields:[]
+        encrypted_fields:[],
+        display_fields:["name","version","description"]
       },
     },
     {
@@ -295,7 +315,7 @@ export const default_app = {
         non_editable_fields:[],
         encrypted_fields:[]
       },
-    },
+    }
   ], 
   records:[]
 }

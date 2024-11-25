@@ -1,6 +1,3 @@
-
-
-
 const commands = {
   new: {
     parse: async (instance,parts) => {
@@ -187,7 +184,8 @@ const parse_and_run = async(instance, text) => {
   let command_result = await run(instance,command)
   return command_result
 }
+// const schemas =    []
 
 export const text_command = {
-  parse,run,parse_and_run
+  actions: {parse,run,parse_and_run}
 };
