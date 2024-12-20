@@ -277,7 +277,7 @@ export class BeanBagDB {
     }
 
     try {
-      let new_log_doc =  this._get_blank_doc("system_log")
+      let new_log_doc =  this._get_blank_doc("system_setting")
       new_log_doc.data = {text,data:{steps},time:this.util_get_now_unix_timestamp(),app:app_data.meta.name}
       await this.db_api.insert(new_log_doc);
       console.log("init logged")
