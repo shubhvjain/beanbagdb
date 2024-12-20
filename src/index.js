@@ -709,7 +709,7 @@ export class BeanBagDB {
  * @param {object} node2 
  * @param {string} edge_name 
  * @param {*} edge_label 
- * @returns 
+ * @returns {Object}
  */
 async create_edge(node1,node2,edge_name,edge_label=""){
   this._check_ready_to_use();
