@@ -277,7 +277,7 @@ export class BeanBagDB {
     }
 
     try {
-      let new_log_doc =  this._get_blank_doc("system_setting")
+      let new_log_doc =  this._get_blank_doc("system_log")
       new_log_doc.data = {text,data:{steps},time:this.util_get_now_unix_timestamp(),app:app_data.meta.name}
       await this.db_api.insert(new_log_doc);
       console.log("init logged")
@@ -286,78 +286,6 @@ export class BeanBagDB {
     }
     return app_doc
   } 
-
-
-  /**
-   * Updates a setting document if it already exists in the database or creates a new document
-   * Inserts or updates a setting in the system settings schema.
-   *
-   * This method either:
-   * - Updates an existing document if the setting with the given `name` already exists in the database.
-   * - Inserts a new document if no matching setting is found.
-   *
-   * If the setting exists and the `value` is an array, the behavior depends on the `on_update_array` key:
-   * - `"append"`: Appends the new value to the existing array.
-   * - `"update"`: Replaces the current array with the new value.
-   *
-   * @async
-   * @param {string} name - The name of the setting to insert or update.
-   * @param {object} new_data - The new data to insert or update.
-   * @param {*} new_data.value - The value to insert or update.
-   * @param {string} [new_data.on_update_array] - Optional behavior for handling arrays, either "append" or "update".
-   * @param {object} [schema={}] - Optional schema to validate the data against (currently not implemented).
-   * @returns {Promise<object>} - The updated or newly inserted document.
-   * @throws {Error} - Throws an error if `new_data` or `new_data.value` is not provided, or if `on_update_array` is invalid.
-   */
-  async save_setting_doc(name, new_data, schema = {}) {
-    // TODO implement schema check
-    if (!new_data) {
-      throw new Error("No data provided");
-    }
-    if (!new_data.value) {
-      throw new Error("No value provided");
-    }
-
-    let doc_search = await this.db_api.search({
-      selector: { schema: "system_setting", "data.name": name },
-    });
-    if (doc_search.docs.length > 0) {
-      // doc already exists, check schema and update it : if it exists then it's value already exists and can be
-      let doc = { ...doc_search.docs[0] };
-      if (Array.isArray(doc.data.value)) {
-        let append_type = doc.data.on_update_array;
-        if (append_type == "append") {
-          doc["data"]["value"].push(new_data.value);
-        } else if (append_type == "update") {
-          doc["data"]["value"] = new_data.value;
-        } else {
-          throw new Error("Invalid on update array value");
-        }
-      } else {
-        doc["data"]["value"] = new_data.value;
-      }
-      // finally update it
-      doc["meta"]["updated_on"] = this.util_get_now_unix_timestamp();
-      await this.db_api.update(doc);
-      return doc;
-    } else {
-      // doc does not exists, generate a new one
-      let new_val = { value: new_data.value };
-
-      if (new_data.on_update_array) {
-        // this indicates the provided value is initial value inside the array
-        new_val.value = [new_data.value];
-        new_val.on_update_array = new_data.on_update_array;
-      }
-      let new_doc = this._get_blank_doc("system_setting");
-      new_doc["data"] = {
-        name: name,
-        ...new_val,
-      };
-      let d = await this.db_api.insert(new_doc);
-      return d;
-    }
-  }
 
 
   /**
@@ -594,6 +522,49 @@ export class BeanBagDB {
   }
 
 
+  /**
+   *  Check if the setting with the given name exists. New record created if not found. If found data is updated based on the updated_mode and the data type of the existing data
+   * If existing value is an array, and update_mode is append "value" is appended to the current value array.
+   * if existing value is an object, update_mode "append" will update fields that exists in the new object, 
+   * for both data types, new value is replaced in update_mode : "replace"
+   * @param {string} name The name of the setting  
+   * @param {object} value Value to be modified 
+   * @param {string} mode 
+   */
+  async modify_setting(name,value,update_mode){
+    if(!name||!value||!update_mode){
+      throw new DocUpdateError("All 3 inputs (setting name, value and update_mode) are required")
+    }
+    let doc_search = await this.db_api.search({
+      selector: { schema: "system_setting", "data.name": name },
+    });
+
+    if (!["append", "update"].includes(update_mode)) {
+      throw new DocUpdateError("Invalid update_mode");
+    }
+
+    if (doc_search.docs.length > 0) {
+      // doc already exists, 
+      let doc = { ...doc_search.docs[0] };
+      if (Array.isArray(value)) {
+        doc.data.value = update_mode === "append" ? [...value, new_data] : new_data; // "update" mode replaces the value
+      } else {
+        doc.data.value = update_mode === "append" ? { ...value, ...new_data } : new_data; // "update" mode replaces the value
+      }
+      // finally update it
+      doc["meta"]["updated_on"] = this.util_get_now_unix_timestamp();
+      // caution : db api is being used directly 
+      await this.db_api.update(doc);
+      return doc;
+
+    } else {
+      // doc does not exists, generate a new one
+      let new_doc = {value, name};
+      let d = await this.create("system_setting",new_doc) 
+      return d;
+    }
+  }
+
 /**
  * Deletes a document from the database by its ID.
  *
@@ -732,6 +703,14 @@ export class BeanBagDB {
 //////////////// simple directed graph ////////////////////////
 //////////////////////////////////////////////////////////
 
+/**
+ * To add an edge between 2 nodes in the system wide simple directed graph.
+ * @param {object} node1 
+ * @param {object} node2 
+ * @param {string} edge_name 
+ * @param {*} edge_label 
+ * @returns 
+ */
 async create_edge(node1,node2,edge_name,edge_label=""){
   this._check_ready_to_use();
   if(!edge_name){throw new ValidationError("edge_name required")}

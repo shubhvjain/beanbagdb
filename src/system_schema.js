@@ -144,7 +144,7 @@ export const default_app = {
       },
     },
     {
-      version:0.60,
+      version:0.65,
       system_generated:true,
       description:"The system relies on these settings for proper functioning or enabling optional features.",
       name: "system_setting",
@@ -160,13 +160,7 @@ export const default_app = {
             pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
           },
           value: {
-            type: ["string", "number", "boolean", "array"] 
-          },
-          on_update_array:{
-            type:"string",
-            default:"replace",
-            description:"Special operation only for updating Arrays. Either replace it or append new elements to it. Cannot be edited",
-            enum:["replace","append"],
+            type: ["array","object"] 
           }
         },
       },
