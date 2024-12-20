@@ -109,7 +109,7 @@ export const default_app = {
     },
     {
       system_generated:true,
-      version:0.60,
+      version:0.61,
       description:"To store user defined key. this can include anything like API tokens etc. There is a special method to fetch this. The values are encrypted",
       name: "system_key",
       schema: {
