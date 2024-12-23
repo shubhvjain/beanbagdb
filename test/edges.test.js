@@ -180,6 +180,7 @@ describe("Edge insertion test", async () => {
         {
           name: "player",
           description:"Player",
+          title:"Player",
           schema: {
             additionalProperties:true,
             type:"object",
@@ -198,6 +199,7 @@ describe("Edge insertion test", async () => {
         {
           name: "team",
           description:"Team",
+          title:"Team",
           schema: {
             additionalProperties:true,
             type:"object",
@@ -216,6 +218,7 @@ describe("Edge insertion test", async () => {
         {
           name: "match",
           description:"Match",
+          title:"Match",
           schema: {
             type:"object",
             additionalProperties:true,

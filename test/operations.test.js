@@ -35,6 +35,7 @@ describe("Schema doc insertion gives errors when", async () => {
       {
         name: "",
         description: "",
+        title:"",
         schema: {},
         settings: {},
       },
@@ -45,6 +46,7 @@ describe("Schema doc insertion gives errors when", async () => {
         name: "nos",
         description: "",
         schema: {},
+        title:"",
         settings: {},
       },
     ],
@@ -54,6 +56,7 @@ describe("Schema doc insertion gives errors when", async () => {
         name: "contact",
         description: "",
         schema: {},
+        title:"",
         settings: {},
       },
     ],
@@ -62,6 +65,7 @@ describe("Schema doc insertion gives errors when", async () => {
       {
         name: "contact",
         description: "This can be left blank",
+        title:"something",
         settings: {},
       },
     ],
@@ -370,6 +374,28 @@ describe("Schema doc insertion gives errors when", async () => {
         },
       },
     ],
+    [
+      "title missing",
+      {
+        name: "contact",
+        description: "This can be left blank",
+        schema: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            address: { type: "object" },
+            secret: { type: "string" },
+          },
+          additionalProperties: true,
+        },
+        settings: {
+          primary_keys: ["name"],
+          non_editable_fields: ["mobile"],
+          single_record: false,
+          encrypted_fields: ["name"],
+        },
+      },
+    ],
   ];
 
   before(async () => {
@@ -538,6 +564,7 @@ describe("Doc insertion tests", async () => {
   const test_schema = {
     name:"book",
     description:"Test schema 1",
+    title:"Book",
     schema: {
       $schema: "http://json-schema.org/draft-07/schema#",
       type: "object",
@@ -733,6 +760,7 @@ describe("Doc insertion tests", async () => {
 describe("Doc insertion tests with encryption", async () => {
   const test_schema = {
     name:"book",
+    title:"Book",
     description:"Test schema 1",
     schema: {
       $schema: "http://json-schema.org/draft-07/schema#",
@@ -930,6 +958,7 @@ describe("Doc read tests", async () => {
   const test_schema = {
     name:"book",
     description:"Test schema 1",
+    title:"Book",
     schema: {
       $schema: "http://json-schema.org/draft-07/schema#",
       type: "object",
@@ -1119,6 +1148,7 @@ describe("Doc update tests", async () => {
   const test_schema = {
     name:"book",
     description:"Test schema 1",
+    title:"Book",
     schema: {
       $schema: "http://json-schema.org/draft-07/schema#",
       type: "object",
@@ -1362,6 +1392,7 @@ describe("Doc delete tests", async () => {
   const test_schema = {
     name:"book",
     description:"Test schema 1",
+    title:"Book",
     schema: {
       $schema: "http://json-schema.org/draft-07/schema#",
       type: "object",
@@ -1528,6 +1559,7 @@ describe("Doc search tests", async () => {
 
   const test_schema = {
     name:"book",
+    title:"Book",
     description:"Test schema 1",
     schema: {
       $schema: "http://json-schema.org/draft-07/schema#",

@@ -8,7 +8,8 @@ export const default_app = {
       name: "schema",
       description:"Meta-schema or the schema for defining other schemas",
       system_generated:true,
-      version:0.85,
+      version:0.86,
+      title:"Schema document",
       schema: {
         type: "object",
         additionalProperties: false,
@@ -39,6 +40,13 @@ export const default_app = {
             minLength:0,
             maxLength:1000,
             description:"A small description of what  data in this schema stores."
+          },
+          title:{
+            type:"string",
+            title:"About",
+            minLength:0,
+            maxLength:1000,
+            description:"A title to display with records."
           },
           schema: {
             type: "object",
@@ -98,20 +106,21 @@ export const default_app = {
             required :["primary_keys","non_editable_fields","encrypted_fields"]
           },
         },
-        required: ["name","description","schema", "settings"],
+        required: ["name","description","schema", "settings","title"],
       },
       settings: {
         primary_keys: ["name"],
         non_editable_fields:[],
         encrypted_fields:[],
-        display_fields:["name","version","description"]
+        display_fields:["name","version","description","title"]
       },
     },
     {
       system_generated:true,
-      version:0.61,
+      version:0.62,
       description:"To store user defined key. this can include anything like API tokens etc. There is a special method to fetch this. The values are encrypted",
       name: "system_key",
+      title:"System key",
       schema: {
         type: "object",
         additionalProperties: true,
@@ -144,10 +153,11 @@ export const default_app = {
       },
     },
     {
-      version:0.65,
+      version:0.66,
       system_generated:true,
       description:"The system relies on these settings for proper functioning or enabling optional features.",
       name: "system_setting",
+      title:"System Setting",
       schema: {
         required:["name","value"],
         type: "object",
@@ -172,8 +182,9 @@ export const default_app = {
     },
     {
       name:"system_edge_constraint",
+      title:"Edge constraint",
       system_generated:true,
-      version:0.50,
+      version:0.51,
       description: "To define edge constraints for simple directed graph of records.",
       schema:{
         type: "object",
@@ -224,8 +235,9 @@ export const default_app = {
     },
     {
       name:"system_edge",
+      title:"Edge in the system graph",
       system_generated:true,
-      version:0.50,
+      version:0.51,
       description: "To define edges in the simple directed graph of records.",
       schema:{
         type: "object",
@@ -251,8 +263,9 @@ export const default_app = {
     },
     {
       name:"system_media",
+      title:"Media content",
       system_generated:true,
-      version:0.60,
+      version:0.61,
       description: "To store images as Base64",
       schema:{
         type: "object",
@@ -282,7 +295,8 @@ export const default_app = {
     {
       name:"system_log",
       system_generated:true,
-      version:0.50,
+      title:"System log",
+      version:0.51,
       description: "To define edges in the simple directed graph of records.",
       schema:{
         type: "object",

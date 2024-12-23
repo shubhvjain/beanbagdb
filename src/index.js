@@ -269,7 +269,7 @@ export class BeanBagDB {
     let app_doc = { ... app_data.meta, version: latest_version}
     try {
       // modify the app setting doc 
-      await this.modify_setting(app_data.meta.name,{value: app_doc,},"update")   
+      await this.modify_setting(app_data.meta.name,app_doc,"update")   
       
       // add a new log 
       let new_log_doc =  this._get_blank_doc("system_log")
@@ -1248,10 +1248,21 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
  *                  "banana-earth-rain".
  *
  */
-    util_generate_random_link() {
-      // prettier-ignore
-      const dictionary = ['rain', 'mars', 'banana', 'earth', 'kiwi', 'mercury', 'fuji', 'hurricane', 'matterhorn', 'snow', 'saturn', 'jupiter', 'peach', 'wind', 'pluto', 'apple', 'k2', 'storm', 'venus', 'denali', 'cloud', 'sunshine', 'mango', 'drizzle', 'pineapple', 'aconcagua', 'gasherbrum', 'apricot', 'neptune', 'fog', 'orange', 'blueberry', 'kilimanjaro', 'uranus', 'grape', 'storm', 'montblanc', 'lemon', 'chooyu', 'raspberry', 'cherry', 'thunder', 'vinson', 'breeze', 'elbrus', 'everest', 'parbat', 'makalu', 'nanga', 'kangchenjunga', 'lightning', 'cyclone', 'comet', 'asteroid', 'pomegranate', 'nectarine', 'clementine', 'strawberry', 'tornado', 'avalanche', 'andes', 'rockies', 'himalayas', 'pyrenees', 'carpathians', 'cascade', 'etna', 'vesuvius', 'volcano', 'tundra', 'whirlwind', 'iceberg', 'eclipse', 'zephyr', 'tropic', 'monsoon', 'aurora'];
-      return Array.from({ length: 3 },() => dictionary[Math.floor(Math.random() * dictionary.length)]).join("-");
+    util_generate_random_link(type=1) {
+      const options = {
+        0:()=>{
+          // prettier-ignore
+          const dictionary = ['rain', 'mars', 'banana', 'earth', 'kiwi', 'mercury', 'fuji', 'hurricane', 'matterhorn', 'snow', 'saturn', 'jupiter', 'peach', 'wind', 'pluto', 'apple', 'k2', 'storm', 'venus', 'denali', 'cloud', 'sunshine', 'mango', 'drizzle', 'pineapple', 'aconcagua', 'gasherbrum', 'apricot', 'neptune', 'fog', 'orange', 'blueberry', 'kilimanjaro', 'uranus', 'grape', 'storm', 'montblanc', 'lemon', 'chooyu', 'raspberry', 'cherry', 'thunder', 'vinson', 'breeze', 'elbrus', 'everest', 'parbat', 'makalu', 'nanga', 'kangchenjunga', 'lightning', 'cyclone', 'comet', 'asteroid', 'pomegranate', 'nectarine', 'clementine', 'strawberry', 'tornado', 'avalanche', 'andes', 'rockies', 'himalayas', 'pyrenees', 'carpathians', 'cascade', 'etna', 'vesuvius', 'volcano', 'tundra', 'whirlwind', 'iceberg', 'eclipse', 'zephyr', 'tropic', 'monsoon', 'aurora'];
+          return Array.from({ length: 3 },() => dictionary[Math.floor(Math.random() * dictionary.length)]).join("-");
+        },
+        1:()=>{
+          const length = Math.floor(Math.random() * 3) + 6; // Random length: 6, 7, or 8
+          const hexNumber = Math.floor(Math.random() * Math.pow(16, length)).toString(16);
+          return hexNumber.padStart(length, '0'); // Ensure it has the desired length
+          
+        }
+      }
+      return options[type]()
     }
 }
 
