@@ -8,7 +8,7 @@ export const default_app = {
       name: "schema",
       description:"Meta-schema or the schema for defining other schemas",
       system_generated:true,
-      version:0.80,
+      version:0.85,
       schema: {
         type: "object",
         additionalProperties: false,
@@ -98,7 +98,7 @@ export const default_app = {
             required :["primary_keys","non_editable_fields","encrypted_fields"]
           },
         },
-        required: ["name","version","description","schema", "settings"],
+        required: ["name","description","schema", "settings"],
       },
       settings: {
         primary_keys: ["name"],

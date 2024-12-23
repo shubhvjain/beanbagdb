@@ -268,21 +268,19 @@ export class BeanBagDB {
 
     let app_doc = { ... app_data.meta, version: latest_version}
     try {
-      await this.save_setting_doc(app_data.meta.name, {
-        value: app_doc,
-      });       
-    } catch (error) {
-      console.log(error)
-      console.log("error in storing/updating beanbagdb_version")
-    }
-
-    try {
+      // modify the app setting doc 
+      await this.modify_setting(app_data.meta.name,{value: app_doc,},"update")   
+      
+      // add a new log 
       let new_log_doc =  this._get_blank_doc("system_log")
       new_log_doc.data = {text,data:{steps},time:this.util_get_now_unix_timestamp(),app:app_data.meta.name}
       await this.db_api.insert(new_log_doc);
       console.log("init logged")
+
     } catch (error) {
       console.log(error)
+      console.log("error in storing/updating beanbagdb_version")
+      throw error
     }
     return app_doc
   } 
@@ -547,9 +545,9 @@ export class BeanBagDB {
       // doc already exists, 
       let doc = { ...doc_search.docs[0] };
       if (Array.isArray(value)) {
-        doc.data.value = update_mode === "append" ? [...value, new_data] : new_data; // "update" mode replaces the value
+        doc.data.value = update_mode === "append" ? [...doc.data.value, value] : value; // "update" mode replaces the value
       } else {
-        doc.data.value = update_mode === "append" ? { ...value, ...new_data } : new_data; // "update" mode replaces the value
+        doc.data.value = update_mode === "append" ? { ...doc.data.value, ...value } : value; // "update" mode replaces the value
       }
       // finally update it
       doc["meta"]["updated_on"] = this.util_get_now_unix_timestamp();
@@ -559,9 +557,11 @@ export class BeanBagDB {
 
     } else {
       // doc does not exists, generate a new one
-      let new_doc = {value, name};
-      let d = await this.create("system_setting",new_doc) 
-      return d;
+      let new_log_doc =  this._get_blank_doc("system_setting")
+      new_log_doc.data = {value, name}
+      await this.db_api.insert(new_log_doc);
+      
+      
     }
   }
 
