@@ -69,10 +69,12 @@ const pdb = new PouchDB(dbname);
         // @TODO ping the database to check connectivity when class is ready to use
       },
       validate_schema: (schema_obj, data_obj)=>{
-        const ajv = new Ajv({code: {esm: true}})  // options can be passed, e.g. {allErrors: true}
+        const ajv = new Ajv({code: {esm: true},strict:false,useDefaults:true})  // options can be passed, e.g. {allErrors: true}
+        const data_copy = {...data_obj}
         const validate = ajv.compile(schema_obj);
-        const valid = validate(data_obj);
-        return {valid,validate}
+        const valid = validate(data_copy);
+
+        return {valid,validate,data:data_copy}
       }
     },
   }

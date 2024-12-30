@@ -6,9 +6,10 @@ export const default_app = {
   schemas:[
     {
       name: "schema",
+      active:true,
       description:"Meta-schema or the schema for defining other schemas",
       system_generated:true,
-      version:0.86,
+      version:0.87,
       title:"Schema document",
       schema: {
         type: "object",
@@ -16,6 +17,11 @@ export const default_app = {
         properties: {
           system_generated:{
             title:"System generated schema",
+            type:"boolean",
+            default:false
+          },
+          active:{
+            title:"This indicates where new documents can be created using this schema or not. Old documents can still be edited",
             type:"boolean",
             default:false
           },
@@ -34,19 +40,19 @@ export const default_app = {
             pattern: "^[a-zA-Z][a-zA-Z0-9_]*$",
             description:"This is the name of the schema.It cannot be changed later"
           },
+          title:{
+            type:"string",
+            title:"Title",
+            minLength:0,
+            maxLength:1000,
+            description:"A title to display with records."
+          },
           description:{
             type:"string",
             title:"About",
             minLength:0,
             maxLength:1000,
             description:"A small description of what  data in this schema stores."
-          },
-          title:{
-            type:"string",
-            title:"About",
-            minLength:0,
-            maxLength:1000,
-            description:"A title to display with records."
           },
           schema: {
             type: "object",
@@ -55,6 +61,7 @@ export const default_app = {
             minProperties: 1,
             maxProperties: 50,
             description:"This must be a valid JSON Schema which will be used to validate documents created with this schema.See this https://tour.json-schema.org/",
+            default:{}
           },
           settings: {
             type: "object",
@@ -110,17 +117,18 @@ export const default_app = {
       },
       settings: {
         primary_keys: ["name"],
-        non_editable_fields:[],
+        non_editable_fields:["system_generated"],
         encrypted_fields:[],
-        display_fields:["name","version","description","title"]
+        display_fields:["name","version","description","title","active"]
       },
     },
     {
       system_generated:true,
-      version:0.62,
+      version:0.63,
       description:"To store user defined key. this can include anything like API tokens etc. There is a special method to fetch this. The values are encrypted",
       name: "system_key",
       title:"System key",
+      active:true,
       schema: {
         type: "object",
         additionalProperties: true,
@@ -153,11 +161,12 @@ export const default_app = {
       },
     },
     {
-      version:0.66,
+      version:0.67,
       system_generated:true,
       description:"The system relies on these settings for proper functioning or enabling optional features.",
       name: "system_setting",
       title:"System Setting",
+      active:true,
       schema: {
         required:["name","value"],
         type: "object",
@@ -184,7 +193,8 @@ export const default_app = {
       name:"system_edge_constraint",
       title:"Edge constraint",
       system_generated:true,
-      version:0.51,
+      active:true,
+      version:0.52,
       description: "To define edge constraints for simple directed graph of records.",
       schema:{
         type: "object",
@@ -236,8 +246,9 @@ export const default_app = {
     {
       name:"system_edge",
       title:"Edge in the system graph",
+      active:true,
       system_generated:true,
-      version:0.51,
+      version:0.52,
       description: "To define edges in the simple directed graph of records.",
       schema:{
         type: "object",
@@ -264,8 +275,9 @@ export const default_app = {
     {
       name:"system_media",
       title:"Media content",
+      active:true,
       system_generated:true,
-      version:0.61,
+      version:0.62,
       description: "To store images as Base64",
       schema:{
         type: "object",
@@ -296,7 +308,8 @@ export const default_app = {
       name:"system_log",
       system_generated:true,
       title:"System log",
-      version:0.51,
+      active:true,
+      version:0.52,
       description: "To define edges in the simple directed graph of records.",
       schema:{
         type: "object",

@@ -451,6 +451,11 @@ export class BeanBagDB {
     //   }
     // }
 
+    // system generated schemas cannot be edited 
+    if(full_doc.schema=="schema"&&full_doc.data.system_generated==true){
+      throw new DocUpdateError("System schemas cannot be updated using this API");
+    }
+
     // update new value depending on settings.non_editable_fields (if does not exists, all fields are editable)
     let all_fields = Object.keys(schema.schema.properties);
     let unedit_fields = schema.settings["non_editable_fields"];
@@ -462,7 +467,7 @@ export class BeanBagDB {
       //  todo : what if additionalField are allowed ??
       let updated_data = { ...full_doc.data, ...allowed_updates };
 
-      this.util_validate_data(schema.schema, updated_data);
+      updated_data = this.util_validate_data(schema.schema, updated_data);
   
       // primary key check if multiple records can  be created
       if (schema.settings["primary_keys"].length > 0) {
@@ -489,7 +494,7 @@ export class BeanBagDB {
       let m_sch = sys_sch.editable_metadata_schema;
       let editable_fields = Object.keys(m_sch["properties"]);
       let allowed_meta = this.util_filter_object(updates.meta, editable_fields);
-      this.util_validate_data(m_sch, allowed_meta);
+      allowed_meta = this.util_validate_data(m_sch, allowed_meta);
       // if update has a link ,then check if it already exists 
       if (allowed_meta.link){
         let search = await this.search({ selector: {"meta.link":allowed_meta.link} })
@@ -652,6 +657,7 @@ export class BeanBagDB {
               system_defined : doc.data.system_generated,
               description: doc.data.description,
               link: doc.meta.link,
+              title:doc.data.title,
               _id:doc._id
             })
           })
@@ -951,9 +957,9 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
    * @returns {Object}
    */
   _get_blank_schema_doc(schema_name, schema_object, data) {
-    this.util_validate_data(schema_object, data);
+    let new_data = this.util_validate_data(schema_object, data);
     let obj = this._get_blank_doc(schema_name);
-    obj["data"] = data;
+    obj["data"] = new_data;
     return obj;
   }
 
@@ -1024,11 +1030,13 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
     if (sch_search.docs.length == 0) {throw new DocCreationError(`The schema "${schema}" does not exists`)}
     let schemaDoc = sch_search.docs[0]["data"];
     // validate data
-    this.util_validate_data(schemaDoc.schema, data);
+    if(!schemaDoc.active){throw new DocCreationError(`The schema "${schema}" is not active`)}
+
+    let new_data = this.util_validate_data(schemaDoc.schema, data);
 
     // validate meta
-    if(Object.keys.length>0){
-      this.util_validate_data(sys_sch.editable_metadata_schema, meta)
+    if(Object.keys(meta).length>0){
+      meta = this.util_validate_data(sys_sch.editable_metadata_schema, meta)
     }
     
 
@@ -1042,25 +1050,25 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
     // @TODO : for schema dos: settings fields must be in schema field
     if (schema == "schema") {
       //more checks are required
-      this.util_validate_schema_object(data);
+      this.util_validate_schema_object(new_data);
     }
     // @TODO : check if single record setting is set to true
     //console.log(schemaDoc)
     // duplicate check
     if (schemaDoc.settings["primary_keys"].length > 0) {
       let primary_obj = { schema: schema };
-      schemaDoc.settings["primary_keys"].map((ky) => {primary_obj["data." + ky] = data[ky];});
+      schemaDoc.settings["primary_keys"].map((ky) => {primary_obj["data." + ky] = new_data[ky];});
       let prim_search = await this.search({ selector: primary_obj });
       if (prim_search.docs.length > 0) {
         throw new DocCreationError(`Document with the given primary key (${schemaDoc.settings["primary_keys"].join(",")}) already exists in the schema "${schema}"`);
       }
     }
     // encrypt if required
-    let new_data = { ...data };
+
     if (schemaDoc.settings["encrypted_fields"].length > 0) {
       // todo test if encryption is successful 
       for (let itm of schemaDoc.settings["encrypted_fields"]) {
-        new_data[itm] = await this.utils.encrypt(data[itm], this.encryption_key);
+        new_data[itm] = await this.utils.encrypt(new_data[itm], this.encryption_key);
       }
     }
 
@@ -1124,16 +1132,18 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
 
 
   /**
-   * Validates a data object against a provided JSON schema
+   * Validates a data object against a provided JSON schema and returns a valid data object (with default value for missing field for which default values are defined in the schema )
    * It relies on the external API provided by the user
    * @param {Object} schema_obj - The JSON schema object to validate against
    * @param {Object} data_obj - The data object to validate
    * @throws {Error} If the data object does not conform to the schema
    */
   util_validate_data(schema_obj, data_obj) {
-    const { valid, validate } = this.utils.validate_schema(schema_obj,data_obj)
+    const { valid, validate , data} = this.utils.validate_schema(schema_obj,data_obj)
     if (!valid) {
       throw new ValidationError(validate.errors);
+    }else{
+      return data
     }
   }
 
