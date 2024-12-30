@@ -563,6 +563,7 @@ describe("Doc insertion tests", async () => {
 
   const test_schema = {
     name:"book",
+    active:true,
     description:"Test schema 1",
     title:"Book",
     schema: {
@@ -761,6 +762,7 @@ describe("Doc insertion tests with encryption", async () => {
   const test_schema = {
     name:"book",
     title:"Book",
+    active:true,
     description:"Test schema 1",
     schema: {
       $schema: "http://json-schema.org/draft-07/schema#",
@@ -959,6 +961,7 @@ describe("Doc read tests", async () => {
     name:"book",
     description:"Test schema 1",
     title:"Book",
+    active:true,
     schema: {
       $schema: "http://json-schema.org/draft-07/schema#",
       type: "object",
@@ -1149,6 +1152,7 @@ describe("Doc update tests", async () => {
     name:"book",
     description:"Test schema 1",
     title:"Book",
+    active:true,
     schema: {
       $schema: "http://json-schema.org/draft-07/schema#",
       type: "object",
@@ -1391,6 +1395,7 @@ describe("Doc delete tests", async () => {
 
   const test_schema = {
     name:"book",
+    active:true,
     description:"Test schema 1",
     title:"Book",
     schema: {
@@ -1560,6 +1565,7 @@ describe("Doc search tests", async () => {
   const test_schema = {
     name:"book",
     title:"Book",
+    active:true,
     description:"Test schema 1",
     schema: {
       $schema: "http://json-schema.org/draft-07/schema#",
