@@ -85,6 +85,68 @@ export class BeanBagDB {
 //////////////////// Setup methods /////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////
 
+/**
+ * This is the list of methods that are compatible with JSON-REST API. Each command either has no params or takes just one json param as input
+ */
+  static rest_enabled = {
+    "ready":{
+      use: "Makes the database ready to use"
+    },
+    "metadata":{
+      use: "Returns metadata related to the current BeanBagDB instance "
+    },
+    "initialize_app":{
+      use:"To install/initialize an external app",
+      input: "{...app_data}"
+    },
+    "update_indexes":{
+      use:"Updates the indexes in the database for better searching"
+    },
+    "create":{
+      input:"{schema,data,meta}",
+      use:"Creates a new doc"
+
+    },
+    "read":{
+      input:"{criteria,include_schema:false}",
+      use:"Returns a doc. 3 ways to search for a doc : by _id, by link or by the primary key of the schema "
+    },
+    "update":{
+      input:"{criteria,updates}",
+      use:"Updates a document"
+    },
+    "delete":{
+      input:"{criteria}",
+      use:"Deletes a doc"
+    },
+    "search":{
+      input:"{criteria:{selector:{...}}}",
+      use:"To search in the database"
+    },
+    "get":{
+      input:"{type,criteria}",
+      use:"Returns special types of documents "
+    },
+    "create_edge":{
+      input:"{node1:{..criteria},node2:{..criteria},edge_name,edge_label}",
+      use:"Creates a new edge in the system's simple directed graph "
+    },
+    "util_get_now_unix_timestamp":{
+      use:"Returns the current UNIX timestamp"
+    },
+    "util_validate_data":{
+      input:"{schema:{},data:{}}",
+      use:"Validate the given data against the given schema and returns errors/validated doc"
+    },
+    "util_validate_schema_object":{
+      input:"{...schema_object...}",
+      use:"Validated the schema document without inserting it in the DB"
+
+    },
+    "util_generate_random_link":{
+      use:"Returns a random link"
+    }
+  }
   /**
    * Database object metadata
    * @typedef {Object} DBMetaData
@@ -162,8 +224,8 @@ export class BeanBagDB {
     // this works on its own but is usually called by ready automatically if required
     // check for schema_scehma : if yes, check if latest and upgrade if required, if no create a new schema doc
     try {
-      let app_data = await this.initialize_db(sys_sch.default_app)
-      console.log(app_data)
+      let app_data = await this.initialize_app(sys_sch.default_app)
+      // console.log(app_data)
       this.meta.beanbagdb_version_db = this._version;
       this.active = true;
       return app_data      
@@ -175,14 +237,23 @@ export class BeanBagDB {
 
   }
 
-  async initialize_db(app_data){
-    // app_data : meta(name,description), schemas[] , default_records:[]
-    // TODO check if add_data is valid
+  /**
+   * Install/Updates an app in the database. 
+   * This should be called before using any
+   * @param {Object} app_data
+   */
+  async initialize_app(app_data_input){
     // calculate the app_version 
+    if(!app_data_input){throw new Error("app_data_input is required")}
+    let app_data = this.util_validate_data({schema:sys_sch.app_data_schema,data:app_data_input})
     let latest_version = 0
-    app_data.schemas.map(sch=>{latest_version = latest_version + sch.version})
+    app_data.schemas.map(sch=>{
+      latest_version = latest_version + sch.version
+      // update the source of schemas to the app 
+      sch["settings"]["install_source"] = `app:${app_data.app_id}`
+    })
     app_data.records.map(sch=>{latest_version = latest_version + sch.version})
-
+    
 
     // check if app setting record exists 
     let version_search = await this.db_api.search({
@@ -191,6 +262,7 @@ export class BeanBagDB {
 
     let update_required = true 
     let doc 
+
     if (version_search.docs.length > 0) {
       doc = version_search.docs[0];
       if(doc["data"]["value"]["version"] == latest_version){
@@ -212,7 +284,7 @@ export class BeanBagDB {
       steps.push(`checking.${schema_name}`)
       try {
         // console.log(schema_name)
-        let schema1 = await this.get("schema",{name:schema_name}) 
+        let schema1 = await this.get({type:"schema",criteria:{name:schema_name}}) 
         if (schema1["data"]["version"] != schema_data.version) {
           steps.push(`old.${schema_name}.v.${schema1["data"]["version"]}`);
           let full_doc = await this.db_api.get(schema1["_id"]);
@@ -257,7 +329,7 @@ export class BeanBagDB {
       const record_title = app_data.records[index]["title"]
       steps.push(`checking.records.${record_title}`)
       try {
-        let new_doc = await this.create(schema_name,schema_data,app_data.records[index]["meta"])
+        let new_doc = await this.create({schema:schema_name,data:schema_data,meta:app_data.records[index]["meta"]})
         steps.push(`doc.${record_title}.created`)
       } catch (error) {
         if(!(error instanceof DocCreationError)){
@@ -266,10 +338,11 @@ export class BeanBagDB {
       }
     }
 
-    let app_doc = { ... app_data.meta, version: latest_version}
+    let app_doc = { ... app_data.meta,app_id: app_data.app_id ,version: latest_version}
     try {
       // modify the app setting doc 
-      await this.modify_setting(app_data.meta.name,app_doc,"update")   
+      // console.log(app_doc,)
+      await this.modify_setting(app_data.app_id,app_doc,"update")   
       
       // add a new log 
       let new_log_doc =  this._get_blank_doc("system_log")
@@ -316,20 +389,28 @@ export class BeanBagDB {
    * This method validates the input data and schema before inserting a new document into the database.
    *
    * @async
-   * @param {string} schema - The schema name for the document, e.g., "contact".
-   * @param {object} data - The document data, e.g., { "name": "", "mobile": "", ... }.
-   * @param {object} [meta={}] - Optional metadata associated with the document.
-   * @param {object} [settings={}] - Optional settings that may affect document creation behavior.
+   
+   * @param {object} input - The document details, e.g.,{ schema:"name",data: { "name": "", "mobile": "", ... }}.
+   * @param {string} [input.schema] - The schema name for the document, e.g., "contact". 
+   * @param {object} [input.data={}] - the  data for the document.
+   * @param {object} [input.meta={}] - Optional metadata associated with the document.
    * @returns {Promise<{id: string}>} - A promise that resolves with the newly inserted document's ID.
    * @throws {Error} - Throws an error if insertion checks fail or if there is an issue with the database operation.
    */
-  async create(schema, data, meta = {}, settings = {}) {
+  async create(input) {
     this._check_ready_to_use();
-    if(!schema){throw new DocCreationError(`No schema provided`)}
-    if(schema=="setting_edge"){throw new DocCreationError("This type of record can only be created through the create_edge api")}
-    if(Object.keys(data).length==0){throw new DocCreationError(`No data provided`)}
+
+    let v_errors = []
+    if(!input.schema){v_errors.push("schema is required")}
+    if(!input.data){v_errors.push("data is required")}
+    if(v_errors.length>0){
+      throw new DocCreationError(`${v_errors.join(",")}.`)
+    }
+
+    if(input.schema=="setting_edge"){throw new DocCreationError("This type of record can only be created through the create_edge api")}
+    if(Object.keys(input.data).length==0){throw new DocCreationError(`No data provided`)}
     try {
-      let doc_obj = await this._insert_pre_checks(schema, data,meta, settings);
+      let doc_obj = await this._insert_pre_checks(input.schema, input.data,input?.meta||{}, input?.settings||{});
       let new_rec = await this.db_api.insert(doc_obj);
       return {_id:new_rec["id"],_rev : new_rec["rev"] ,...doc_obj};
     } catch (error) {
@@ -352,15 +433,14 @@ export class BeanBagDB {
  * @param {string} [criteria.link] - A unique link identifier for the document.
  * @param {string} [criteria.schema] - The schema name used when searching by primary keys.
  * @param {Object} [criteria.data] - Data object containing the schema's primary keys for search.
- * 
- * @param {boolean} [include_schema=false] - Whether to include the schema object in the returned result.
+ * @param {string} [criteria.include_schema] - Whether to include the schema object in the returned result.
  * 
  * @returns {Promise<Object>} - Returns an object with the document (`doc`) and optionally the schema (`schema`).
  * 
  * @throws {DocNotFoundError} If no document is found for the given criteria.
  * @throws {ValidationError} If invalid search criteria are provided.
  */
-  async read(criteria, include_schema = false) {
+  async read(criteria) {
     // todo : decrypt doc
     this._check_ready_to_use()
     let obj = { doc: null }
@@ -376,7 +456,7 @@ export class BeanBagDB {
       if (linkSearch.docs.length == 0) {throw new DocNotFoundError(BeanBagDB.error_codes.doc_not_found)}
       obj.doc = linkSearch.docs[0];
     } else if (criteria.hasOwnProperty("schema") & criteria.hasOwnProperty("data")) {
-      data_schema = await this.get("schema",{"name":criteria.schema})
+      data_schema = await this.get({type:"schema",criteria:{"name":criteria.schema}})
       let A = data_schema["data"]["settings"]["primary_keys"];
       let search_criteria = { schema: criteria.schema };
       A.forEach((itm) => {
@@ -392,11 +472,14 @@ export class BeanBagDB {
       throw new ValidationError(`Invalid criteria to read a document. Valid ways : {"schema":"schema_name","data":{...primary key}} or {"_id":""} or {"link":""} `)
     }
     if (!data_schema){
-      data_schema = await this.get("schema",{"name":obj.doc.schema})
+      data_schema = await this.get({type:"schema",criteria:{"name":obj.doc.schema}})
     }
-    if(include_schema) {obj.schema = data_schema["data"]}
+
+    if(criteria.include_schema) {obj.schema = data_schema["data"]}
+
     // decrypt the document 
     obj.doc = await this._decrypt_doc(data_schema["data"], obj.doc)
+
     return obj;
   }
 
@@ -413,11 +496,12 @@ export class BeanBagDB {
  *   - Yes, but a validation check ensures that primary key policies are not violated before the update is applied.
  *
  * 
- * @param {Object} doc_search_criteria - The criteria used to search for the document (e.g., {"_id": "document_id"}, {"link": "some_link"}, {"schema": "schema_name", "data": {primary_key_fields}}).
- * @param {String} rev_id - The document's revision ID (`_rev`) used for version control and conflict detection.
- * @param {Object} updates - The updated values for the document, structured as `{data: {}, meta: {}}`. Only the fields to be updated need to be provided.
- * @param {String} [update_source="api"] - Identifies the source of the update (default: "api").
- * @param {Boolean} [save_conflict=true] - If `true`, conflicting updates will be saved separately in case of revision mismatches.
+ * @param {Object} params - Object to fetch and update data
+ * @param {Object} [params.criteria] - The criteria used to search for the document (e.g., {"_id": "document_id"}, {"link": "some_link"}, {"schema": "schema_name", "data": {primary_key_fields}}).
+ * @param {Object} [params.updates] - The updated values for the document, structured as `{data: {}, meta: {}}`. Only the fields to be updated need to be provided.
+ * @param {String} [params.rev_id] - The document's revision ID (`_rev`) used for version control and conflict detection.
+ * @param {String} [params.update_source="api"] - Identifies the source of the update (default: "api").
+ * @param {Boolean} [params.save_conflict=true] - If `true`, conflicting updates will be saved separately in case of revision mismatches.
  * 
  * **Behavior**:
  * - Retrieves the document based on the provided search criteria.
@@ -436,11 +520,24 @@ export class BeanBagDB {
  * @throws {DocUpdateError} - If a document with conflicting primary keys already exists.
  * @throws {ValidationError} - If the provided data or metadata is invalid according to the schema.
  */
-  async update(doc_search_criteria, updates, rev_id="", update_source = "api", save_conflict = true) {
+  async update(params) {
+
     this._check_ready_to_use();
+
+    const {
+      criteria,
+      updates,
+      rev_id = "",
+      update_source = "api",
+      save_conflict = true
+    } = params;
+
+    if(!criteria){throw new DocUpdateError("Doc search criteria not provided")}
+    if(!updates){throw new DocUpdateError("No updates provided")}
+
     // making a big assumption here : primary key fields cannot be edited
     // so updating the doc will not generate primary key conflicts
-    let req_data = await this.read(doc_search_criteria, true);
+    let req_data = await this.read({...criteria, include_schema: true});
     let schema = req_data.schema;
     let full_doc = req_data.doc; 
     // @TODO fix this : what to do if the rev id does not match
@@ -467,7 +564,7 @@ export class BeanBagDB {
       //  todo : what if additionalField are allowed ??
       let updated_data = { ...full_doc.data, ...allowed_updates };
 
-      updated_data = this.util_validate_data(schema.schema, updated_data);
+      updated_data = this.util_validate_data({schema:schema.schema,data: updated_data});
   
       // primary key check if multiple records can  be created
       if (schema.settings["primary_keys"].length > 0) {
@@ -494,7 +591,7 @@ export class BeanBagDB {
       let m_sch = sys_sch.editable_metadata_schema;
       let editable_fields = Object.keys(m_sch["properties"]);
       let allowed_meta = this.util_filter_object(updates.meta, editable_fields);
-      allowed_meta = this.util_validate_data(m_sch, allowed_meta);
+      allowed_meta = this.util_validate_data({schema:m_sch, data:allowed_meta});
       // if update has a link ,then check if it already exists 
       if (allowed_meta.link){
         let search = await this.search({ selector: {"meta.link":allowed_meta.link} })
@@ -524,6 +621,151 @@ export class BeanBagDB {
     }
   }
 
+
+
+
+/**
+ * Deletes a document from the database by its ID.
+ *
+ * @param {String} doc_id - The ID of the document to delete.
+ * @throws {DocNotFoundError} If the document with the specified ID does not exist.
+ * @throws {ValidationError} If the database is not ready to use.
+ */
+  async delete(criteria) {
+    this._check_ready_to_use();
+    let doc = await this.read(criteria)
+    const delete_blocked = ["schema","system_setting","system_log"]
+    if (delete_blocked.includes(doc.schema)){
+      throw new Error(`Deletion of ${doc.schema} doc is not support yet.`)
+    }
+    await this.db_api.delete(doc.doc._id);
+  }
+
+
+////////////////////////////////////////////////////////
+////////////////// Search ////////////////////////////
+///////////////////////////////////////////////////////
+
+
+  /**
+   * Searches for documents in the database for the specified query. The query are Mango queries.
+   * One field is mandatory : Schema
+   * E.g
+   * @param {Object} criteria
+   */
+  async search(criteria={}) {
+    this._check_ready_to_use();
+    if (!criteria["selector"]) {
+      throw new ValidationError("Invalid search query.Use {selector:{...query...}}");
+    }
+    //if (!criteria["selector"]["schema"]) {
+    //  throw new Error("The search criteria must contain the schema");
+    //}
+    const results = await this.db_api.search(criteria);
+    return results;
+  }
+
+/**
+ * Retrieves special types of documents from the database, such as schema documents or blank documents 
+ * for a given schema. It handles system-related data and throws errors for invalid document types 
+ * or if the document is not found.
+ *
+ * @param {Object} [input={}] - Criteria used to search for the special document. 
+
+ * @param {String} input.type - The type of special document to fetch. Supported types include:
+ *                                    - 'schema': Retrieves a schema document based on the criteria provided.
+ * @param {Object} [input.criteria={}] - Criteria used to search for the special document. 
+ *                                 For example, to search for a schema, the criteria should include the name.
+ *
+ * @throws {ValidationError} Throws if the `special_doc_type` is not recognized.
+ * @throws {DocNotFoundError} Throws if the requested document is not found in the database.
+ *
+ * @returns {Object} The fetched special document based on the type and criteria.
+ */
+  async get(input){
+
+    // this method returns special types of documents such as schema doc, or a blank doc for a given schema and other system related things 
+    const fetch_docs = {
+      // to return schema object for the given name
+      schema:async (criteria)=>{
+        let schemaSearch = await this.db_api.search({
+          selector: { schema: "schema", "data.name": criteria.name },
+        });
+        // console.log(schemaSearch)
+        if (schemaSearch.docs.length == 0) {
+          throw new DocNotFoundError(BeanBagDB.error_codes.schema_not_found);
+        }
+        return schemaSearch.docs[0];
+      },
+      // schema list 
+      schema_list:async (criteria)=>{
+        let schemaSearch = await this.db_api.search({
+          selector: { schema: "schema" },
+        });
+        // console.log(schemaSearch)
+        if (schemaSearch.docs.length == 0) {
+          throw new DocNotFoundError(BeanBagDB.error_codes.schema_not_found);
+        }else{
+          let schemas = []
+          schemaSearch.docs.map(doc=>{
+            schemas.push({
+              name: doc.data.name,
+              version: doc.data.version,
+              system_defined : doc.data.system_generated,
+              description: doc.data.description,
+              link: doc.meta.link,
+              title:doc.data.title,
+              _id:doc._id
+            })
+          })
+          return schemas
+        }
+        
+      }
+    }
+    if(!input.type){throw new ValidationError("No type provided. Must be: "+Object.keys(fetch_docs).join(","))}
+    if(Object.keys(fetch_docs).includes(input.type)){
+      let data = await fetch_docs[input.type](input?.criteria||{})
+      return data
+    }else{
+      throw new ValidationError("Invalid name. Must be : "+Object.keys(fetch_docs).join(","))
+    }
+  }
+
+
+//////////////////// methods for special use , requires to be called using the class (rather than the rest api)
+
+
+  /**
+   * To load a plugin in the current BeanBagDB instance.
+   * Plug_module has to be loaded manually first. It must export an object containing fields: `actions` and `schema`. 
+   * `actions` is an object of methods which can be called after loading the plugin. 
+   * `schema` is an array of JSON schemas that are required by the plugin. Every time a plugin is loaded, this list is schemas is verified. New updates are added automatically to the database and logged 
+   *  methods inside actions must be async and must have at least one parameter : `db_instance` which is assumed to be the current instance of the BeanBagDB object itself. They ideally must also return some value.
+   * @param {string} plugin_name 
+   * @param {object} plugin_module 
+   */
+  async load_plugin(plugin_name, plugin_module) {
+    this._check_ready_to_use();
+    this.plugins[plugin_name] = {};
+    //console.log(plugin_module)
+    if(plugin_module.actions){
+      for (let func_name in plugin_module.actions) {
+        if (typeof plugin_module.actions[func_name] == "function") {
+          this.plugins[plugin_name][func_name] = plugin_module.actions[func_name].bind(null,this)
+        }
+      }
+    }
+
+    if(plugin_module.schemas){
+      await this._upgrade_schema_in_bulk(plugin_module.schemas,true,`Updating ${plugin_name} plugin schemas`)
+    }
+
+    // Check if the plugin has an on_load method and call it
+    // if (typeof this.plugins[plugin_name].on_load === "function") {
+    //   await this.plugins[plugin_name].on_load();
+    // }
+  }
 
   /**
    *  Check if the setting with the given name exists. New record created if not found. If found data is updated based on the updated_mode and the data type of the existing data
@@ -570,141 +812,6 @@ export class BeanBagDB {
     }
   }
 
-/**
- * Deletes a document from the database by its ID.
- *
- * @param {String} doc_id - The ID of the document to delete.
- * @throws {DocNotFoundError} If the document with the specified ID does not exist.
- * @throws {ValidationError} If the database is not ready to use.
- */
-  async delete(criteria) {
-    this._check_ready_to_use();
-    let doc = await this.read(criteria)
-    const delete_blocked = ["schema","setting","key"]
-    if (delete_blocked.includes(doc.schema)){
-      throw new Error(`Deletion of ${doc.schema} doc is not support yet.`)
-    }
-    await this.db_api.delete(doc.doc._id);
-  }
-
-
-////////////////////////////////////////////////////////
-////////////////// Search ////////////////////////////
-///////////////////////////////////////////////////////
-
-
-  /**
-   * Searches for documents in the database for the specified query. The query are Mango queries.
-   * One field is mandatory : Schema
-   * E.g
-   * @param {Object} criteria
-   */
-  async search(criteria={}) {
-    this._check_ready_to_use();
-    if (!criteria["selector"]) {
-      throw new ValidationError("Invalid search query.Use {selector:{...query...}}");
-    }
-    //if (!criteria["selector"]["schema"]) {
-    //  throw new Error("The search criteria must contain the schema");
-    //}
-    const results = await this.db_api.search(criteria);
-    return results;
-  }
-
-/**
- * Retrieves special types of documents from the database, such as schema documents or blank documents 
- * for a given schema. It handles system-related data and throws errors for invalid document types 
- * or if the document is not found.
- *
- * @param {String} special_doc_type - The type of special document to fetch. Supported types include:
- *                                    - 'schema': Retrieves a schema document based on the criteria provided.
- * @param {Object} [criteria={}] - Criteria used to search for the special document. 
- *                                 For example, to search for a schema, the criteria should include the name.
- *
- * @throws {ValidationError} Throws if the `special_doc_type` is not recognized.
- * @throws {DocNotFoundError} Throws if the requested document is not found in the database.
- *
- * @returns {Object} The fetched special document based on the type and criteria.
- */
-  async get(special_doc_type,criteria={}){
-    // this method returns special types of documents such as schema doc, or a blank doc for a given schema and other system related things 
-    const fetch_docs = {
-      // to return schema object for the given name
-      schema:async (criteria)=>{
-        let schemaSearch = await this.db_api.search({
-          selector: { schema: "schema", "data.name": criteria.name },
-        });
-        // console.log(schemaSearch)
-        if (schemaSearch.docs.length == 0) {
-          throw new DocNotFoundError(BeanBagDB.error_codes.schema_not_found);
-        }
-        return schemaSearch.docs[0];
-      },
-      // schema list 
-      schema_list:async (criteria)=>{
-        let schemaSearch = await this.db_api.search({
-          selector: { schema: "schema" },
-        });
-        // console.log(schemaSearch)
-        if (schemaSearch.docs.length == 0) {
-          throw new DocNotFoundError(BeanBagDB.error_codes.schema_not_found);
-        }else{
-          let schemas = []
-          schemaSearch.docs.map(doc=>{
-            schemas.push({
-              name: doc.data.name,
-              version: doc.data.version,
-              system_defined : doc.data.system_generated,
-              description: doc.data.description,
-              link: doc.meta.link,
-              title:doc.data.title,
-              _id:doc._id
-            })
-          })
-          return schemas
-        }
-        
-      }
-    }
-    if(Object.keys(fetch_docs).includes(special_doc_type)){
-      let data = await fetch_docs[special_doc_type](criteria)
-      return data
-    }else{
-      throw new ValidationError("Invalid special doc type. Must be : "+Object.keys(fetch_docs).join(","))
-    }
-  }
-
-  /**
-   * To load a plugin in the current BeanBagDB instance.
-   * Plug_module has to be loaded manually first. It must export an object containing fields: `actions` and `schema`. 
-   * `actions` is an object of methods which can be called after loading the plugin. 
-   * `schema` is an array of JSON schemas that are required by the plugin. Every time a plugin is loaded, this list is schemas is verified. New updates are added automatically to the database and logged 
-   *  methods inside actions must be async and must have at least one parameter : `db_instance` which is assumed to be the current instance of the BeanBagDB object itself. They ideally must also return some value.
-   * @param {string} plugin_name 
-   * @param {object} plugin_module 
-   */
-  async load_plugin(plugin_name, plugin_module) {
-    this._check_ready_to_use();
-    this.plugins[plugin_name] = {};
-    //console.log(plugin_module)
-    if(plugin_module.actions){
-      for (let func_name in plugin_module.actions) {
-        if (typeof plugin_module.actions[func_name] == "function") {
-          this.plugins[plugin_name][func_name] = plugin_module.actions[func_name].bind(null,this)
-        }
-      }
-    }
-
-    if(plugin_module.schemas){
-      await this._upgrade_schema_in_bulk(plugin_module.schemas,true,`Updating ${plugin_name} plugin schemas`)
-    }
-
-    // Check if the plugin has an on_load method and call it
-    // if (typeof this.plugins[plugin_name].on_load === "function") {
-    //   await this.plugins[plugin_name].on_load();
-    // }
-  }
-
 ///////////////////////////////////////////////////////////
 //////////////// simple directed graph ////////////////////////
 //////////////////////////////////////////////////////////
@@ -717,7 +824,8 @@ export class BeanBagDB {
  * @param {*} edge_label 
  * @returns {Object}
  */
-async create_edge(node1,node2,edge_name,edge_label=""){
+async create_edge(input){
+  const {node1,node2,edge_name,edge_label=""} = input 
   this._check_ready_to_use();
   if(!edge_name){throw new ValidationError("edge_name required")}
   if(Object.keys(node1)==0){throw new ValidationError("node1 required")}
@@ -762,7 +870,7 @@ async create_edge(node1,node2,edge_name,edge_label=""){
     }
     
     if(errors.length==0){
-      let edge = await this.create("system_edge",{node1: node1id , node2: node1id ,edge_name:edge_name })
+      let edge = await this.create({schema:"system_edge",data:{node1: node1id , node2: node1id ,edge_name:edge_name }})
       return edge
     }else{
       throw new RelationError(errors)
@@ -771,8 +879,8 @@ async create_edge(node1,node2,edge_name,edge_label=""){
   } catch (error) {
     if(error instanceof DocNotFoundError){
       let doc = {node1:"*",node2:"*",name:edge_name,label:edge_label}
-      let new_doc = await this.create("system_edge_constraint",doc) 
-      let edge = await this.create("system_edge",{node1: n1.doc._id,node2: n2.doc._id,edge_name:edge_name })
+      let new_doc = await this.create({schema:"system_edge_constraint",data:doc}) 
+      let edge = await this.create({schema:"system_edge",data:{node1: n1.doc._id,node2: n2.doc._id,edge_name:edge_name }})
       return edge
     }else{
       throw error
@@ -841,7 +949,7 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
     const schema_data = schemas[index]
     steps.push(`checking.${schema_name}`)
     try {
-      let schema1 = await this.get("schema",{name:schema_name}) 
+      let schema1 = await this.get({type:"schema",criteria:{name:schema_name}}) 
       if (schema1["data"]["version"] != schema_data.version) {
         steps.push(`old.${schema_name}.v.${schema1["data"]["version"]}`);
         let full_doc = await this.db_api.get(schema1["_id"]);
@@ -957,7 +1065,7 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
    * @returns {Object}
    */
   _get_blank_schema_doc(schema_name, schema_object, data) {
-    let new_data = this.util_validate_data(schema_object, data);
+    let new_data = this.util_validate_data({schema:schema_object, data});
     let obj = this._get_blank_doc(schema_name);
     obj["data"] = new_data;
     return obj;
@@ -1032,11 +1140,11 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
     // validate data
     if(!schemaDoc.active){throw new DocCreationError(`The schema "${schema}" is not active`)}
 
-    let new_data = this.util_validate_data(schemaDoc.schema, data);
+    let new_data = this.util_validate_data({schema:schemaDoc.schema, data});
 
     // validate meta
     if(Object.keys(meta).length>0){
-      meta = this.util_validate_data(sys_sch.editable_metadata_schema, meta)
+      meta = this.util_validate_data({schema:sys_sch.editable_metadata_schema, data:meta})
     }
     
 
@@ -1094,29 +1202,14 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
    */
     util_get_now_unix_timestamp() {return Math.floor(Date.now() / 1000)}
 
-  /**
-   * Validates that the required fields are present in the provided object.
-   *
-   * @param {string[]} requiredFields - An array of field names that are required.
-   * @param {object} obj - The object to check for the required fields.
-   * @throws {ValidationError} If any of the required fields are missing, an error is thrown.
-   */
+
   util_check_required_fields(requiredFields, obj) {
     for (const field of requiredFields) {
       if (!obj[field]) {throw new ValidationError(`The field ${field} is required.`)}
     }
   }
 
-  /**
- * Filters an object, returning a new object that only contains the specified fields.
- *
- * @param {Object} obj - The object to filter.
- * @param {Array<String>} fields - An array of field names to retain in the filtered object.
- * 
- * @returns {Object} - A new object containing only the fields that exist in `obj` from the `fields` array.
- * 
- * **Example**:
- * 
+  /**  Filters an object, returning a new object that only contains the specified fields.
  * const data = { name: "Alice", age: 25, location: "NY" };
  * const result = util_filter_object(data, ["name", "age"]);
  * // result: { name: "Alice", age: 25 }
@@ -1130,7 +1223,6 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
     }, {});
   }
 
-
   /**
    * Validates a data object against a provided JSON schema and returns a valid data object (with default value for missing field for which default values are defined in the schema )
    * It relies on the external API provided by the user
@@ -1138,8 +1230,11 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
    * @param {Object} data_obj - The data object to validate
    * @throws {Error} If the data object does not conform to the schema
    */
-  util_validate_data(schema_obj, data_obj) {
-    const { valid, validate , data} = this.utils.validate_schema(schema_obj,data_obj)
+  util_validate_data(input) {
+    if(!input.schema){throw new ValidationError("schema is required")}
+    if(!input.data){throw new ValidationError("data is required")}
+
+    const { valid, validate , data} = this.utils.validate_schema(input.schema,input.data)
     if (!valid) {
       throw new ValidationError(validate.errors);
     }else{
@@ -1258,7 +1353,7 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
  *                  "banana-earth-rain".
  *
  */
-    util_generate_random_link(type=1) {
+    util_generate_random_link(input={type:1}) {
       const options = {
         0:()=>{
           // prettier-ignore
@@ -1272,7 +1367,7 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
           
         }
       }
-      return options[type]()
+      return options[input.type]()
     }
 }
 
