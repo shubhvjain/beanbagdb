@@ -162,8 +162,8 @@ export class BeanBagDB {
     // this works on its own but is usually called by ready automatically if required
     // check for schema_scehma : if yes, check if latest and upgrade if required, if no create a new schema doc
     try {
-      let app_data = await this.initialize_db(sys_sch.default_app)
-      console.log(app_data)
+      let app_data = await this.initialize_app(sys_sch.default_app)
+      // console.log(app_data)
       this.meta.beanbagdb_version_db = this._version;
       this.active = true;
       return app_data      
@@ -175,14 +175,22 @@ export class BeanBagDB {
 
   }
 
-  async initialize_db(app_data){
-    // app_data : meta(name,description), schemas[] , default_records:[]
-    // TODO check if add_data is valid
+  /**
+   * Install/Updates an app in the database. 
+   * This should be called before using any
+   * @param {Object} app_data
+   */
+  async initialize_app(app_data_input){
     // calculate the app_version 
+    let app_data = this.util_validate_data(sys_sch.app_data_schema,app_data_input)
     let latest_version = 0
-    app_data.schemas.map(sch=>{latest_version = latest_version + sch.version})
+    app_data.schemas.map(sch=>{
+      latest_version = latest_version + sch.version
+      // update the source of schemas to the app 
+      sch["settings"]["install_source"] = `app:${app_data.app_id}`
+    })
     app_data.records.map(sch=>{latest_version = latest_version + sch.version})
-
+    
 
     // check if app setting record exists 
     let version_search = await this.db_api.search({
@@ -191,6 +199,7 @@ export class BeanBagDB {
 
     let update_required = true 
     let doc 
+
     if (version_search.docs.length > 0) {
       doc = version_search.docs[0];
       if(doc["data"]["value"]["version"] == latest_version){
@@ -257,7 +266,7 @@ export class BeanBagDB {
       const record_title = app_data.records[index]["title"]
       steps.push(`checking.records.${record_title}`)
       try {
-        let new_doc = await this.create(schema_name,schema_data,app_data.records[index]["meta"])
+        let new_doc = await this.create({schema:schema_name,data:schema_data,meta:app_data.records[index]["meta"]})
         steps.push(`doc.${record_title}.created`)
       } catch (error) {
         if(!(error instanceof DocCreationError)){
@@ -266,10 +275,11 @@ export class BeanBagDB {
       }
     }
 
-    let app_doc = { ... app_data.meta, version: latest_version}
+    let app_doc = { ... app_data.meta,app_id: app_data.app_id ,version: latest_version}
     try {
       // modify the app setting doc 
-      await this.modify_setting(app_data.meta.name,app_doc,"update")   
+      // console.log(app_doc,)
+      await this.modify_setting(app_data.app_id,app_doc,"update")   
       
       // add a new log 
       let new_log_doc =  this._get_blank_doc("system_log")
@@ -316,20 +326,28 @@ export class BeanBagDB {
    * This method validates the input data and schema before inserting a new document into the database.
    *
    * @async
-   * @param {string} schema - The schema name for the document, e.g., "contact".
-   * @param {object} data - The document data, e.g., { "name": "", "mobile": "", ... }.
-   * @param {object} [meta={}] - Optional metadata associated with the document.
-   * @param {object} [settings={}] - Optional settings that may affect document creation behavior.
+   
+   * @param {object} input - The document details, e.g.,{ schema:"name",data: { "name": "", "mobile": "", ... }}.
+   * @param {string} [input.schema] - The schema name for the document, e.g., "contact". 
+   * @param {object} [input.data={}] - the  data for the document.
+   * @param {object} [input.meta={}] - Optional metadata associated with the document.
    * @returns {Promise<{id: string}>} - A promise that resolves with the newly inserted document's ID.
    * @throws {Error} - Throws an error if insertion checks fail or if there is an issue with the database operation.
    */
-  async create(schema, data, meta = {}, settings = {}) {
+  async create(input) {
     this._check_ready_to_use();
-    if(!schema){throw new DocCreationError(`No schema provided`)}
-    if(schema=="setting_edge"){throw new DocCreationError("This type of record can only be created through the create_edge api")}
-    if(Object.keys(data).length==0){throw new DocCreationError(`No data provided`)}
+
+    let v_errors = []
+    if(!input.schema){v_errors.push("schema is required")}
+    if(!input.data){v_errors.push("data is required")}
+    if(v_errors.length>0){
+      throw new DocCreationError(`${v_errors.join(",")}.`)
+    }
+
+    if(input.schema=="setting_edge"){throw new DocCreationError("This type of record can only be created through the create_edge api")}
+    if(Object.keys(input.data).length==0){throw new DocCreationError(`No data provided`)}
     try {
-      let doc_obj = await this._insert_pre_checks(schema, data,meta, settings);
+      let doc_obj = await this._insert_pre_checks(input.schema, input.data,input?.meta||{}, input?.settings||{});
       let new_rec = await this.db_api.insert(doc_obj);
       return {_id:new_rec["id"],_rev : new_rec["rev"] ,...doc_obj};
     } catch (error) {
@@ -352,15 +370,14 @@ export class BeanBagDB {
  * @param {string} [criteria.link] - A unique link identifier for the document.
  * @param {string} [criteria.schema] - The schema name used when searching by primary keys.
  * @param {Object} [criteria.data] - Data object containing the schema's primary keys for search.
- * 
- * @param {boolean} [include_schema=false] - Whether to include the schema object in the returned result.
+ * @param {string} [criteria.include_schema] - Whether to include the schema object in the returned result.
  * 
  * @returns {Promise<Object>} - Returns an object with the document (`doc`) and optionally the schema (`schema`).
  * 
  * @throws {DocNotFoundError} If no document is found for the given criteria.
  * @throws {ValidationError} If invalid search criteria are provided.
  */
-  async read(criteria, include_schema = false) {
+  async read(criteria) {
     // todo : decrypt doc
     this._check_ready_to_use()
     let obj = { doc: null }
@@ -394,9 +411,12 @@ export class BeanBagDB {
     if (!data_schema){
       data_schema = await this.get("schema",{"name":obj.doc.schema})
     }
-    if(include_schema) {obj.schema = data_schema["data"]}
+
+    if(criteria.include_schema) {obj.schema = data_schema["data"]}
+
     // decrypt the document 
     obj.doc = await this._decrypt_doc(data_schema["data"], obj.doc)
+
     return obj;
   }
 
@@ -413,11 +433,12 @@ export class BeanBagDB {
  *   - Yes, but a validation check ensures that primary key policies are not violated before the update is applied.
  *
  * 
- * @param {Object} doc_search_criteria - The criteria used to search for the document (e.g., {"_id": "document_id"}, {"link": "some_link"}, {"schema": "schema_name", "data": {primary_key_fields}}).
- * @param {String} rev_id - The document's revision ID (`_rev`) used for version control and conflict detection.
- * @param {Object} updates - The updated values for the document, structured as `{data: {}, meta: {}}`. Only the fields to be updated need to be provided.
- * @param {String} [update_source="api"] - Identifies the source of the update (default: "api").
- * @param {Boolean} [save_conflict=true] - If `true`, conflicting updates will be saved separately in case of revision mismatches.
+ * @param {Object} params - Object to fetch and update data
+ * @param {Object} [params.criteria] - The criteria used to search for the document (e.g., {"_id": "document_id"}, {"link": "some_link"}, {"schema": "schema_name", "data": {primary_key_fields}}).
+ * @param {Object} [params.updates] - The updated values for the document, structured as `{data: {}, meta: {}}`. Only the fields to be updated need to be provided.
+ * @param {String} [params.rev_id] - The document's revision ID (`_rev`) used for version control and conflict detection.
+ * @param {String} [params.update_source="api"] - Identifies the source of the update (default: "api").
+ * @param {Boolean} [params.save_conflict=true] - If `true`, conflicting updates will be saved separately in case of revision mismatches.
  * 
  * **Behavior**:
  * - Retrieves the document based on the provided search criteria.
@@ -436,11 +457,24 @@ export class BeanBagDB {
  * @throws {DocUpdateError} - If a document with conflicting primary keys already exists.
  * @throws {ValidationError} - If the provided data or metadata is invalid according to the schema.
  */
-  async update(doc_search_criteria, updates, rev_id="", update_source = "api", save_conflict = true) {
+  async update(params) {
+
     this._check_ready_to_use();
+
+    const {
+      criteria,
+      updates,
+      rev_id = "",
+      update_source = "api",
+      save_conflict = true
+    } = params;
+
+    if(!criteria){throw new DocUpdateError("Doc search criteria not provided")}
+    if(!updates){throw new DocUpdateError("No updates provided")}
+    
     // making a big assumption here : primary key fields cannot be edited
     // so updating the doc will not generate primary key conflicts
-    let req_data = await this.read(doc_search_criteria, true);
+    let req_data = await this.read({...criteria, include_schema: true});
     let schema = req_data.schema;
     let full_doc = req_data.doc; 
     // @TODO fix this : what to do if the rev id does not match
@@ -762,7 +796,7 @@ async create_edge(node1,node2,edge_name,edge_label=""){
     }
     
     if(errors.length==0){
-      let edge = await this.create("system_edge",{node1: node1id , node2: node1id ,edge_name:edge_name })
+      let edge = await this.create({schema:"system_edge",data:{node1: node1id , node2: node1id ,edge_name:edge_name }})
       return edge
     }else{
       throw new RelationError(errors)
@@ -771,8 +805,8 @@ async create_edge(node1,node2,edge_name,edge_label=""){
   } catch (error) {
     if(error instanceof DocNotFoundError){
       let doc = {node1:"*",node2:"*",name:edge_name,label:edge_label}
-      let new_doc = await this.create("system_edge_constraint",doc) 
-      let edge = await this.create("system_edge",{node1: n1.doc._id,node2: n2.doc._id,edge_name:edge_name })
+      let new_doc = await this.create({schema:"system_edge_constraint",data:doc}) 
+      let edge = await this.create({schema:"system_edge",data:{node1: n1.doc._id,node2: n2.doc._id,edge_name:edge_name }})
       return edge
     }else{
       throw error

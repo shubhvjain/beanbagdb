@@ -3,7 +3,7 @@ import Ajv  from 'ajv';
 import PouchDB from 'pouchdb';
 import pouchdbFind from 'pouchdb-find';
 PouchDB.plugin(pouchdbFind)
-import { scryptSync, randomBytes, createCipheriv, createDecipheriv } from 'crypto';
+import crypto from 'crypto' 
 
 
 export const get_pdb_doc = (dbname,secret)=>{
@@ -42,28 +42,75 @@ const pdb = new PouchDB(dbname);
     },
     utils: {
       encrypt: async (text, encryptionKey) => {
-        //console.log(encryptionKey)
-        const key = scryptSync(encryptionKey, "salt", 32); // Derive a 256-bit key
-        const iv = randomBytes(16); // Initialization vector
-        const cipher = createCipheriv("aes-256-cbc", key, iv);
-        let encrypted = cipher.update(text, "utf8", "hex");
-        encrypted += cipher.final("hex");
-        //console.log("IV:", iv.toString("hex"));
-        //console.log("Encrypted:", encrypted);
-        return iv.toString("hex") + ":" + encrypted; // Prepend the IV for decryption
+        const encoder = new TextEncoder();
+        const data = encoder.encode(text); // Encode the text into bytes
+
+        // Ensure the encryption key is of valid length (16, 24, or 32 bytes for AES-GCM)
+        const keyBytes = encoder.encode(encryptionKey);
+        if (
+          keyBytes.length !== 16 &&
+          keyBytes.length !== 24 &&
+          keyBytes.length !== 32
+        ) {
+          throw new Error("Encryption key must be 16, 24, or 32 bytes long.");
+        }
+
+        // Convert encryptionKey to CryptoKey
+        const key = await crypto.subtle.importKey(
+          "raw",
+          keyBytes,
+          { name: "AES-GCM" },
+          false,
+          ["encrypt"]
+        );
+
+        // Create a random initialization vector (IV)
+        const iv = crypto.getRandomValues(new Uint8Array(12)); // 12 bytes for AES-GCM
+
+        // Encrypt the data
+        const encrypted = await crypto.subtle.encrypt(
+          { name: "AES-GCM", iv: iv },
+          key,
+          data
+        );
+
+        // Convert encrypted data and IV to base64 for storage
+        const encryptedArray = new Uint8Array(encrypted);
+        const encryptedText = btoa(String.fromCharCode(...encryptedArray));
+        const ivText = btoa(String.fromCharCode(...iv));
+
+        return ivText + ":" + encryptedText; // Store IV and encrypted text together
       },
-      decrypt: async  (encryptedText, encryptionKey) => {
-        //console.log(encryptedText, encryptionKey)
-        const key = scryptSync(encryptionKey, "salt", 32); // Derive a 256-bit key
-        const [ivHex, encryptedHex] = encryptedText.split(":");
-        const iv = Buffer.from(ivHex, "hex");
-        const encrypted = Buffer.from(encryptedHex, "hex");
-        //console.log("IV:", iv.toString("hex"));
-        //console.log("Encrypted:", encrypted.toString("hex"));
-        const decipher = createDecipheriv("aes-256-cbc", key, iv);
-        let decrypted = decipher.update(encrypted, "hex", "utf8");
-        decrypted += decipher.final("utf8");
-        return decrypted;
+      decrypt: async (encryptedText, encryptionKey) => {
+        const [ivText, encryptedData] = encryptedText.split(":");
+
+        // Convert IV and encrypted data from base64 to byte arrays
+        const iv = Uint8Array.from(atob(ivText), (c) => c.charCodeAt(0));
+        const encryptedArray = Uint8Array.from(atob(encryptedData), (c) =>
+          c.charCodeAt(0)
+        );
+
+        const encoder = new TextEncoder();
+
+        // Convert encryptionKey to CryptoKey
+        const key = await crypto.subtle.importKey(
+          "raw",
+          encoder.encode(encryptionKey),
+          { name: "AES-GCM" },
+          false,
+          ["decrypt"]
+        );
+
+        // Decrypt the data
+        const decrypted = await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: iv },
+          key,
+          encryptedArray
+        );
+
+        // Convert decrypted data back to a string
+        const decoder = new TextDecoder();
+        return decoder.decode(decrypted);
       },
       ping: () => {
         // @TODO ping the database to check connectivity when class is ready to use
