@@ -369,7 +369,7 @@ export const default_app = {
       system_generated: true,
       title: "Executable script",
       active: true,
-      version: 0.1,
+      version: 0.2,
       description: "To create scripts that implement some logic. Can run both on browser and client.",
       schema: {
         type: "object",
