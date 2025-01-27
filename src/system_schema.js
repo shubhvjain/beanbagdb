@@ -363,6 +363,48 @@ export const default_app = {
         encrypted_fields: [],
       },
     },
+    {
+      name: "system_script",
+      system_generated: true,
+      title: "Executable script",
+      active: true,
+      version: 0.1,
+      description: "To create scripts that implement some logic. Can run both on browser and client.",
+      schema: {
+        type: "object",
+        additionalProperties: true,
+        required: ["script","type","version"],
+        properties: {
+          type: {
+            type: "string",
+            default:"JS"
+          },
+          script: {
+            type: "string",
+            description:"The script",
+            default:""
+          },
+          usage:{
+            type:"string",
+            description:"Documentation",
+            default:" "
+          },
+          version :{
+            type:"number",
+            default:0.1
+          },
+          log_execution:{
+            type:"boolean",
+            default:false
+          }
+        },
+      },
+      settings: {
+        primary_keys: [],
+        non_editable_fields: [],
+        encrypted_fields: [],
+      },
+    },
   ],
   records: [],
 };
@@ -384,6 +426,10 @@ export const editable_metadata_schema = {
       maxLength: 2000,
       pattern: "^[a-zA-Z0-9-]+$",
     },
+    title:{
+      type:"string",
+      maxLength:10000
+    }
   },
 };
 

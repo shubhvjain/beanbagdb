@@ -1371,7 +1371,7 @@ describe("Doc search tests", async () => {
   it('all docs', async () => {
       try {
         let udata = await database3.search({selector:{}})
-        assert(udata.docs.length==12)
+        assert(udata.docs.length==13)
       } catch (error) {
         //console.log(error)
         throw error
@@ -1391,7 +1391,7 @@ describe("Doc search tests", async () => {
   it('read docs 2', async () => {
     try {
       let udata = await database3.search({selector:{"schema":"schema"}})
-      assert(udata.docs.length==8) // schema,book,setting,key,edge,edge_constraints
+      assert(udata.docs.length==9) // schema,book,setting,key,edge,edge_constraints
     } catch (error) {
       //console.log(error)
       throw error

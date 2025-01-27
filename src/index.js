@@ -1043,13 +1043,16 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
     if (!schema_name) {
       throw new Error("Schema name not provided for the blank doc");
     }
+    let dt = this.util_get_now_unix_timestamp()
+    let title = `${schema_name} document - ${dt}`
     let doc = {
       data: {},
       meta: {
-        created_on: this.util_get_now_unix_timestamp(),
+        created_on: dt,
         tags: [],
         app: {},
         link: this.util_generate_random_link(), // there is a link by default. overwrite this if user provided one but only before checking if it is unique
+        title: title
       },
       schema: schema_name,
     };
@@ -1088,7 +1091,6 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
       console.log(error)
       throw new EncryptionError([{message:error.message}])
     }
-    
   }
 
   /**
