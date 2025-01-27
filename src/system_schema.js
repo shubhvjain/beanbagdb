@@ -1,6 +1,7 @@
 export const default_app = {
   app_id: "beanbagdb_system",
   meta: {
+    name: "beanbagdb_system",
     description:
       "This is the default system app required for proper functioning of the database",
   },
@@ -379,6 +380,11 @@ export const default_app = {
             type: "string",
             default:"JS"
           },
+          name: {
+            type: "string",
+            default:"script-name",
+            pattern: "^[a-zA-Z0-9\\-]+$"
+          },
           script: {
             type: "string",
             description:"The script",
@@ -400,7 +406,7 @@ export const default_app = {
         },
       },
       settings: {
-        primary_keys: [],
+        primary_keys: ["name"],
         non_editable_fields: [],
         encrypted_fields: [],
       },
