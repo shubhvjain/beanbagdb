@@ -257,7 +257,7 @@ export class BeanBagDB {
 
     // check if app setting record exists 
     let version_search = await this.db_api.search({
-      selector: { schema: "system_setting", "data.name": app_data.meta.name },
+      selector: { schema: "system_setting", "data.name": app_data.app_id },
     })
 
     let update_required = true 
@@ -275,7 +275,7 @@ export class BeanBagDB {
     // if version is latest no additional steps required
     // version mismatch => update all docs
 
-    let text = `Initializing ${app_data.meta.name} app to v.${latest_version}`
+    let text = `Initializing ${app_data.app_id} app to v.${latest_version}`
     let steps = ["update started"]
 
     for (let index = 0; index < app_data.schemas.length; index++) {
@@ -301,7 +301,7 @@ export class BeanBagDB {
         // console.log(error);
         if (error instanceof DocNotFoundError) {
           // inserting new schema doc
-          if(schema_name=="schema"&& app_data.meta.name=="beanbagdb_system"){
+          if(schema_name=="schema"&& app_data.app_id=="beanbagdb_system"){
             // this is to initialize the system schema
             let schema_schema_doc = this._get_blank_doc("schema");
             schema_schema_doc.data = schema_data;
@@ -346,7 +346,7 @@ export class BeanBagDB {
       
       // add a new log 
       let new_log_doc =  this._get_blank_doc("system_log")
-      new_log_doc.data = {text,data:{steps},time:this.util_get_now_unix_timestamp(),app:app_data.meta.name}
+      new_log_doc.data = {text,data:{steps},time:this.util_get_now_unix_timestamp(),app:app_data.app_id}
       await this.db_api.insert(new_log_doc);
       console.log("init logged")
 
