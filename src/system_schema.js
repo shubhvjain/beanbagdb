@@ -218,13 +218,13 @@ export const default_app = {
       title: "Edge constraint",
       system_generated: true,
       active: true,
-      version: 0.52,
+      version: 0.60,
       description:
         "To define edge constraints for simple directed graph of records.",
       schema: {
         type: "object",
         additionalProperties: true,
-        required: ["node1", "node2", "edge_type"],
+        required: ["node1", "node2", "name"],
         properties: {
           node1: {
             type: "string",

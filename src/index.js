@@ -836,7 +836,7 @@ async create_edge(input){
   let edges_constraint
 
   try {
-    let d  = await this.read({schema:"setting_edge_constraint",data:{name:edge_name}})
+    let d  = await this.read({schema:"system_edge_constraint",data:{name:edge_name}})
     edges_constraint = d["doc"]["data"]
     let errors = [] 
     let node1id = n1.doc._id
