@@ -11,7 +11,7 @@ export const default_app = {
       active: true,
       description: "Meta-schema or the schema for defining other schemas",
       system_generated: true,
-      version: 0.88,
+      version: 1,
       title: "Schema document",
       schema: {
         type: "object",
@@ -146,7 +146,7 @@ export const default_app = {
     },
     {
       system_generated: true,
-      version: 0.63,
+      version: 1,
       description:
         "To store user defined key. this can include anything like API tokens etc. There is a special method to fetch this. The values are encrypted",
       name: "system_key",
@@ -184,7 +184,7 @@ export const default_app = {
       },
     },
     {
-      version: 0.67,
+      version: 1,
       system_generated: true,
       description:
         "The system relies on these settings for proper functioning or enabling optional features.",
@@ -218,7 +218,7 @@ export const default_app = {
       title: "Edge constraint",
       system_generated: true,
       active: true,
-      version: 0.60,
+      version: 1,
       description:
         "To define edge constraints for simple directed graph of records.",
       schema: {
@@ -275,12 +275,12 @@ export const default_app = {
       title: "Edge in the system graph",
       active: true,
       system_generated: true,
-      version: 0.52,
+      version: 1,
       description: "To define edges in the simple directed graph of records.",
       schema: {
         type: "object",
         additionalProperties: true,
-        required: ["node1", "node2", "edge_type"],
+        required: ["node1", "node2", "edge_name"],
         properties: {
           node1: {
             type: "string",
@@ -291,10 +291,14 @@ export const default_app = {
           edge_name: {
             type: "string",
           },
+          note:{
+            type:"string",
+            default:" "
+          }
         },
       },
       settings: {
-        primary_keys: ["node1", "node2", "edge_type"],
+        primary_keys: ["node1", "node2", "edge_name"],
         non_editable_fields: ["edge_type"],
         encrypted_fields: [],
       },
@@ -304,7 +308,7 @@ export const default_app = {
       title: "Media content",
       active: true,
       system_generated: true,
-      version: 0.62,
+      version: 1,
       description: "To store images as Base64",
       schema: {
         type: "object",
@@ -336,7 +340,7 @@ export const default_app = {
       system_generated: true,
       title: "System log",
       active: true,
-      version: 0.52,
+      version: 1,
       description: "To define edges in the simple directed graph of records.",
       schema: {
         type: "object",
@@ -369,7 +373,7 @@ export const default_app = {
       system_generated: true,
       title: "Executable script",
       active: true,
-      version: 0.2,
+      version: 1,
       description: "To create scripts that implement some logic. Can run both on browser and client.",
       schema: {
         type: "object",
