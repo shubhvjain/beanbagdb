@@ -407,7 +407,7 @@ export class BeanBagDB {
       throw new DocCreationError(`${v_errors.join(",")}.`)
     }
 
-    if(input.schema=="setting_edge"){throw new DocCreationError("This type of record can only be created through the create_edge api")}
+    // if(input.schema=="system_edge"){throw new DocCreationError("This type of record can only be created through the create_edge api")}
     if(Object.keys(input.data).length==0){throw new DocCreationError(`No data provided`)}
     try {
       let doc_obj = await this._insert_pre_checks(input.schema, input.data,input?.meta||{}, input?.settings||{});
@@ -564,6 +564,10 @@ export class BeanBagDB {
       //  todo : what if additionalField are allowed ??
       let updated_data = { ...full_doc.data, ...allowed_updates };
 
+      if(full_doc.schema=="system_edge"){
+        // extra checks required. if everything is correct 
+        updated_data = await this._create_edge(updated_data)
+      }    
       updated_data = this.util_validate_data({schema:schema.schema,data: updated_data});
   
       // primary key check if multiple records can  be created
@@ -620,8 +624,6 @@ export class BeanBagDB {
       throw new DocUpdateError("Nothing to update")
     }
   }
-
-
 
 
 /**
@@ -721,6 +723,21 @@ export class BeanBagDB {
           return schemas
         }
         
+      },
+      schema_icons: async (criteria)=>{
+        let schemaSearch = await this.db_api.search({
+          selector: { schema: "schema" },
+        });
+        // console.log(schemaSearch)
+        if (schemaSearch.docs.length == 0) {
+          throw new DocNotFoundError(BeanBagDB.error_codes.schema_not_found);
+        }else{
+          let schemas = {}
+          schemaSearch.docs.map(doc=>{
+            schemas[doc.data.name] = doc.data.settings.svg_icon25||""
+          })
+          return schemas
+        }
       }
     }
     if(!input.type){throw new ValidationError("No type provided. Must be: "+Object.keys(fetch_docs).join(","))}
@@ -821,21 +838,31 @@ export class BeanBagDB {
  * @param {object} node1 
  * @param {object} node2 
  * @param {string} edge_name 
- * @param {*} edge_label 
+ * @param {string} note 
  * @returns {Object}
  */
-async create_edge(input){
-  const {node1,node2,edge_name,edge_label=""} = input 
+async _create_edge(input){
+  console.log(input)
+  let {node1,node2,edge_name,note=""} = input 
   this._check_ready_to_use();
   if(!edge_name){throw new ValidationError("edge_name required")}
-  if(Object.keys(node1)==0){throw new ValidationError("node1 required")}
-  if(Object.keys(node2)==0){throw new ValidationError("node2 required")}
- 
+  if(!node1|| Object.keys(node1).length==0){throw new ValidationError("node1 required")}
+  if(!node2|| Object.keys(node2).length==0){throw new ValidationError("node2 required")}
+  // if nodes are of type string, they are assumed to be ids since they are stored in the DB as ids
+  if(typeof(node1)=="string"){node1 = {_id:node1}}
+  if(typeof(node2)=="string"){node2 = {_id:node2}}
   let n1 = await this.read(node1)
   let n2 = await this.read(node2)
+  if(n1.doc._id==n2.doc._id){
+    throw new ValidationError("Both nodes cannot be the same")
+  }
+  if(n1.doc.schema=="system_edge"|| n2.doc.schema=="system_edge"){
+    throw new ValidationError("A node cannot be an existing edge document")
+  }
   let edges_constraint
 
   try {
+    // check if edge_name has a related edge_constraint
     let d  = await this.read({schema:"system_edge_constraint",data:{name:edge_name}})
     edges_constraint = d["doc"]["data"]
     let errors = [] 
@@ -850,7 +877,7 @@ async create_edge(input){
         node2id = n1.doc._id
       }
     }else{
-      this.errors.push("Invalid nodes.This config of nodes not allowed")
+      errors.push("Invalid nodes.This config of nodes not allowed")
     }
         
     let records = await this.search({selector:{schema:"system_edge","data.edge_name":edge_name}})
@@ -870,18 +897,17 @@ async create_edge(input){
     }
     
     if(errors.length==0){
-      let edge = await this.create({schema:"system_edge",data:{node1: node1id , node2: node1id ,edge_name:edge_name }})
-      return edge
+      // let edge = await this.create({schema:"system_edge",data:})
+      return {node1: node1id , node2: node2id ,edge_name:edge_name ,note:note}
     }else{
       throw new RelationError(errors)
     }
     
   } catch (error) {
     if(error instanceof DocNotFoundError){
-      let doc = {node1:"*",node2:"*",name:edge_name,label:edge_label}
+      let doc = {node1:"*",node2:"*",name:edge_name,note:note}
       let new_doc = await this.create({schema:"system_edge_constraint",data:doc}) 
-      let edge = await this.create({schema:"system_edge",data:{node1: n1.doc._id,node2: n2.doc._id,edge_name:edge_name }})
-      return edge
+      return {node1: n1.doc._id,node2: n2.doc._id,edge_name:edge_name ,note:note}
     }else{
       throw error
     }  
@@ -1142,7 +1168,10 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
     // validate data
     if(!schemaDoc.active){throw new DocCreationError(`The schema "${schema}" is not active`)}
 
-    let new_data = this.util_validate_data({schema:schemaDoc.schema, data});
+    let new_data
+    if(schema!="system_edge"){
+      new_data = this.util_validate_data({schema:schemaDoc.schema, data});
+    }    
 
     // validate meta
     if(Object.keys(meta).length>0){
@@ -1161,6 +1190,9 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
     if (schema == "schema") {
       //more checks are required
       this.util_validate_schema_object(new_data);
+    }else if(schema == "system_edge"){
+      let create_edge_after_checks = await this._create_edge(data)
+      new_data = create_edge_after_checks
     }
     // @TODO : check if single record setting is set to true
     //console.log(schemaDoc)
