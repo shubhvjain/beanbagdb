@@ -723,6 +723,21 @@ export class BeanBagDB {
           return schemas
         }
         
+      },
+      schema_icons: async (criteria)=>{
+        let schemaSearch = await this.db_api.search({
+          selector: { schema: "schema" },
+        });
+        // console.log(schemaSearch)
+        if (schemaSearch.docs.length == 0) {
+          throw new DocNotFoundError(BeanBagDB.error_codes.schema_not_found);
+        }else{
+          let schemas = {}
+          schemaSearch.docs.map(doc=>{
+            schemas[doc.data.name] = doc.data.settings.svg_icon25||""
+          })
+          return schemas
+        }
       }
     }
     if(!input.type){throw new ValidationError("No type provided. Must be: "+Object.keys(fetch_docs).join(","))}
