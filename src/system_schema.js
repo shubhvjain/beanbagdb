@@ -11,7 +11,7 @@ export const default_app = {
       active: true,
       description: "Meta-schema or the schema for defining other schemas",
       system_generated: true,
-      version: 1,
+      version: 1.25,
       title: "Schema document",
       schema: {
         type: "object",
@@ -353,7 +353,7 @@ export const default_app = {
       system_generated: true,
       title: "System log",
       active: true,
-      version: 1,
+      version: 1.25,
       description: "To define edges in the simple directed graph of records.",
       schema: {
         type: "object",
@@ -369,10 +369,7 @@ export const default_app = {
           },
           app: {
             type: "string",
-          },
-          time: {
-            type: "string",
-          },
+          }
         },
       },
       settings: {
@@ -453,6 +450,7 @@ export const editable_metadata_schema = {
     },
     title:{
       type:"string",
+      default:"Document",
       maxLength:10000
     },
     ref:{
