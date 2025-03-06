@@ -436,7 +436,7 @@ export const default_app = {
 
 // this is not stored in the DB. only for validating the metadata during doc update
 export const editable_metadata_schema = {
-  additionalProperties: false,
+  additionalProperties: true,
   type: "object",
   properties: {
     tags: {
@@ -454,6 +454,16 @@ export const editable_metadata_schema = {
     title:{
       type:"string",
       maxLength:10000
+    },
+    ref:{
+      type:"object",
+      "description":"This can be used by apps to add additional data for later user like version ",
+      default:{}
+    },
+    location:{
+      type:"object",
+      "description":"this can be used to add created_from and last_updated_from location to the doc",
+      default:{}
     }
   },
 };
