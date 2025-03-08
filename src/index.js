@@ -739,6 +739,10 @@ export class BeanBagDB {
           })
           return schemas
         }
+      },
+      editable_meta_schema: async (criteria)=>{
+        let e = sys_sch.editable_metadata_schema
+        return e
       }
     }
     if(!input.type){throw new ValidationError("No type provided. Must be: "+Object.keys(fetch_docs).join(","))}

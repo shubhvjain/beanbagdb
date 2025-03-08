@@ -363,10 +363,6 @@ export const default_app = {
           text: {
             type: "string",
           },
-          data: {
-            type: "object",
-            additionalProperties: true,
-          },
           app: {
             type: "string",
           }
