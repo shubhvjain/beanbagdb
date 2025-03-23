@@ -848,7 +848,7 @@ export class BeanBagDB {
  */
 async _create_edge(input){
   console.log(input)
-  let {node1,node2,edge_name,note=""} = input 
+  let {node1,node2,edge_name,note="",level_weight=1} = input 
   this._check_ready_to_use();
   if(!edge_name){throw new ValidationError("edge_name required")}
   if(!node1|| Object.keys(node1).length==0){throw new ValidationError("node1 required")}
@@ -903,7 +903,7 @@ async _create_edge(input){
     
     if(errors.length==0){
       // let edge = await this.create({schema:"system_edge",data:})
-      return {node1: node1id , node2: node2id ,edge_name:edge_name ,note:note}
+      return {node1: node1id , node2: node2id ,edge_name:edge_name ,note:note,level_weight}
     }else{
       throw new RelationError(errors)
     }
@@ -912,7 +912,7 @@ async _create_edge(input){
     if(error instanceof DocNotFoundError){
       let doc = {node1:"*",node2:"*",name:edge_name,note:note}
       let new_doc = await this.create({schema:"system_edge_constraint",data:doc}) 
-      return {node1: n1.doc._id,node2: n2.doc._id,edge_name:edge_name ,note:note}
+      return {node1: n1.doc._id,node2: n2.doc._id,edge_name:edge_name ,note:note,level_weight}
     }else{
       throw error
     }  

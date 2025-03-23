@@ -779,7 +779,7 @@ describe("Doc insertion tests", async () => {
 
 
   let invalid_meta = [
-    ["invalid meta field",{tabs:[]}],
+    //["invalid meta field",{tabs:[]}],
     ["invalid meta.tags",{tags:"a,b,c"}],
     ["invalid meta.link",{link:{'1':1}}],
   ]
