@@ -286,7 +286,7 @@ export const default_app = {
       title: "Edge in the system graph",
       active: true,
       system_generated: true,
-      version: 1,
+      version: 1.5,
       description: "To define edges in the simple directed graph of records.",
       schema: {
         type: "object",
