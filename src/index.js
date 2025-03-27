@@ -60,7 +60,7 @@ export class BeanBagDB {
     };
     this._version = this._get_current_version();
     this.active = false;
-    this.plugins = {};
+    this.apps = {}; // this is where external apps load their scripts 
     console.log("Run ready() now");
   }
 
@@ -183,9 +183,9 @@ export class BeanBagDB {
    * @async
    * @returns {Promise<void>} - Resolves when the database has been verified and initialized.
    */
-  async ready() {
-    // TODO Ping db
-    console.log("running ready....")
+
+  async check_ready(){
+    console.log("checking if DB is ready to be used")
     let version_search = await this.db_api.search({
       selector: { schema: "system_setting", "data.name": "beanbagdb_system" },
     })
@@ -196,12 +196,22 @@ export class BeanBagDB {
       this.active = doc["data"]["value"]["version"] == this._version;
       this.meta.beanbagdb_version_db = doc["data"]["value"]["version"];
     }
-    if (this.active) {
-      console.log("Ready");
+    if(!this.active){console.log("Version mismatch.Init of default required")}
+    return this.active
+  }
+
+  async ready(init_automatically=true) {
+    let ready = await this.check_ready()
+
+    if (ready) {
+      console.log("Ready.Set.Go");
     } else {
-      console.log("Not ready. Init required")
-      //throw new Error("Initialization required")
-      await this.initialize();
+      if(init_automatically){
+        console.log("Initializing")
+        await this.initialize();
+      }else{
+        throw new Error("DB cannot be used because there is a version mismatch between the DB and the script. Since automatically init flag was set to true, exiting")
+      }
     }
   }
 
@@ -411,7 +421,7 @@ export class BeanBagDB {
     // if(input.schema=="system_edge"){throw new DocCreationError("This type of record can only be created through the create_edge api")}
     if(Object.keys(input.data).length==0){throw new DocCreationError(`No data provided`)}
     try {
-      let doc_obj = await this._insert_pre_checks(input.schema, input.data,input?.meta||{}, input?.settings||{});
+      let doc_obj = await this._insert_pre_checks(input.schema, input.data,input?.meta||{}, input?.app||{} ,input?.settings||{});
       let new_rec = await this.db_api.insert(doc_obj);
       return {_id:new_rec["id"],_rev : new_rec["rev"] ,...doc_obj};
     } catch (error) {
@@ -534,7 +544,7 @@ export class BeanBagDB {
     } = params;
 
     if(!criteria){throw new DocUpdateError("Doc search criteria not provided")}
-    if(!updates){throw new DocUpdateError("No updates provided")}
+    if(!updates){throw new DocUpdateError("No updates provided. Format {'update':{'data':{...selected fields},'meta':{},'app':{... used by apps to manage app data} }}")}
 
     // making a big assumption here : primary key fields cannot be edited
     // so updating the doc will not generate primary key conflicts
@@ -613,6 +623,52 @@ export class BeanBagDB {
       full_doc["meta"] = { ...full_doc["meta"], ...allowed_meta };
       something_to_update = true
     }
+
+    /**
+     * to update app data
+     * app {  key:{mode:"update|replace|append|remove",data:{}}  }
+     */
+
+    if(updates.app){
+      if(!full_doc.app){ full_doc["app"]={}}
+      //if(update_source=="api"){throw new DocUpdateError(`Invalid update source. Only an app can update app data of the doc. You must specify an app name as "update_source" `)}
+      Object.entries(updates.app).forEach(([appName, update]) => {
+        if (!update || typeof update !== 'object' || !update.mode || !update.data) {
+            console.warn(`Invalid update format for ${appName}`);
+            throw new DocUpdateError(`Invalid update format for app ${appName}. Must be an object {mode:"update|replace|append|remove", data:{} }`)
+        }
+        switch (update.mode) {
+            case 'update':
+                full_doc.app[appName] = { 
+                    ...full_doc.app[appName], 
+                    ...update.data 
+                };
+                something_to_update = true
+                break;
+            case 'replace':
+                full_doc.app[appName] = update.data;
+                something_to_update = true
+                break;
+            case 'append':
+                Object.entries(update.data).forEach(([key, value]) => {
+                    if (!Array.isArray(full_doc.app[appName]?.[key])) {
+                        full_doc.app[appName] = full_doc.app[appName] || {};
+                        full_doc.app[appName][key] = [];
+                    }
+                    full_doc.app[appName][key].push(value);
+                });
+                something_to_update = true
+                break;
+            case 'remove':
+                delete full_doc.app[appName];
+                something_to_update = true
+                break;
+            default:
+              throw new DocUpdateError(  `Unknown mode: ${update.mode} app ${appName}. Must be an object {mode:"update|replace|append|remove", data:{} }`)
+        }
+      });
+    }
+
     if(something_to_update){
       // encrypt the data again since read returns decrypted data
       full_doc = await this._encrypt_doc(schema, full_doc); 
@@ -767,26 +823,18 @@ export class BeanBagDB {
    * @param {string} plugin_name 
    * @param {object} plugin_module 
    */
-  async load_plugin(plugin_name, plugin_module) {
+  async load_scripts(app_name, app_module) {
     this._check_ready_to_use();
-    this.plugins[plugin_name] = {};
-    //console.log(plugin_module)
-    if(plugin_module.actions){
-      for (let func_name in plugin_module.actions) {
-        if (typeof plugin_module.actions[func_name] == "function") {
-          this.plugins[plugin_name][func_name] = plugin_module.actions[func_name].bind(null,this)
+    this.apps[app_name] = {};
+    if(app_module){
+      for (let func_name in app_module) {
+        if (typeof app_module[func_name] == "function") {
+          this.apps[app_name][func_name] = app_module[func_name].bind(null,this)
         }
       }
+    }else{
+      console.log("app_module is blank")
     }
-
-    if(plugin_module.schemas){
-      await this._upgrade_schema_in_bulk(plugin_module.schemas,true,`Updating ${plugin_name} plugin schemas`)
-    }
-
-    // Check if the plugin has an on_load method and call it
-    // if (typeof this.plugins[plugin_name].on_load === "function") {
-    //   await this.plugins[plugin_name].on_load();
-    // }
   }
 
   /**
@@ -1075,16 +1123,16 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
       throw new Error("Schema name not provided for the blank doc");
     }
     let dt = this.util_get_now_unix_timestamp()
-    let title = `${schema_name} document - ${dt}`
+    let title = `${dt}`
     let doc = {
       data: {},
       meta: {
         created_on: dt,
         tags: [],
-        app: {},
         link: this.util_generate_random_link(), // there is a link by default. overwrite this if user provided one but only before checking if it is unique
         title: title
       },
+      app:{},
       schema: schema_name,
     };
     return doc;
@@ -1165,7 +1213,7 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
    *
    * @throws {Error} If validation fails, or the document already exists.
    */
-  async _insert_pre_checks(schema, data, meta = {}, settings = {}) {
+  async _insert_pre_checks(schema, data,  meta = {}, app={} ,settings = {}) {
     // schema search
     let sch_search = await this.search({selector: { schema: "schema", "data.name": schema }})
     if (sch_search.docs.length == 0) {throw new DocCreationError(`The schema "${schema}" does not exists`)}
@@ -1181,6 +1229,19 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
     // validate meta
     if(Object.keys(meta).length>0){
       meta = this.util_validate_data({schema:sys_sch.editable_metadata_schema, data:meta})
+    }
+
+    if(Object.keys(app).length>0){
+      let app_schema = {
+        "type": "object",
+        "patternProperties": {
+          ".*": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
+      }
+      let app1 = this.util_validate_data({schema:app_schema, data:app})
     }
     
 
@@ -1225,6 +1286,9 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
     // if meta exists
     if(meta){
       doc_obj["meta"] = {...doc_obj["meta"],...meta};
+    }
+    if(app){
+      doc_obj["app"] = app
     }
     return doc_obj;
   }
