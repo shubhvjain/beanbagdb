@@ -605,7 +605,8 @@ export class BeanBagDB {
     if (updates.meta) {
       let m_sch = sys_sch.editable_metadata_schema;
       let editable_fields = Object.keys(m_sch["properties"]);
-      let allowed_meta = this.util_filter_object(updates.meta, editable_fields);
+      //let allowed_meta = this.util_filter_object(updates.meta, editable_fields);
+      let allowed_meta = {...full_doc["meta"], ...allowed_meta}
       allowed_meta = this.util_validate_data({schema:m_sch, data:allowed_meta});
       // if update has a link ,then check if it already exists 
       if (allowed_meta.link){
@@ -620,7 +621,7 @@ export class BeanBagDB {
         }
       }
 
-      full_doc["meta"] = { ...full_doc["meta"], ...allowed_meta };
+      full_doc["meta"] = {...allowed_meta} ;
       something_to_update = true
     }
 
@@ -948,7 +949,6 @@ async _create_edge(input){
         errors.push("max limit reached")
       }
     }
-    
     if(errors.length==0){
       // let edge = await this.create({schema:"system_edge",data:})
       return {node1: node1id , node2: node2id ,edge_name:edge_name ,note:note,level_weight}
