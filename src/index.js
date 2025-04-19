@@ -606,7 +606,7 @@ export class BeanBagDB {
       let m_sch = sys_sch.editable_metadata_schema;
       let editable_fields = Object.keys(m_sch["properties"]);
       //let allowed_meta = this.util_filter_object(updates.meta, editable_fields);
-      let allowed_meta = {...full_doc["meta"], ...allowed_meta}
+      let allowed_meta = {...full_doc["meta"], ...updates.meta}
       allowed_meta = this.util_validate_data({schema:m_sch, data:allowed_meta});
       // if update has a link ,then check if it already exists 
       if (allowed_meta.link){
