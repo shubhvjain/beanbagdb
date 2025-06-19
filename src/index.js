@@ -721,8 +721,36 @@ export class BeanBagDB {
     //if (!criteria["selector"]["schema"]) {
     //  throw new Error("The search criteria must contain the schema");
     //}
-    const results = await this.db_api.search(criteria);
+    let results = await this.db_api.search(criteria);
+    let def_options = {decrypt_docs:false}
+    let options = { ...def_options, ...criteria?.options||{},  }
+    // console.log(options)
+    if(options["decrypt_docs"]){
+      if(results.docs.length>0){
+        results = await this._decrypt_docs(results)
+      }       
+    }
+
     return results;
+  }
+
+  async _decrypt_docs(search_results){
+    const uniqueSchemas = [...new Set(search_results.docs.map(item => item.schema))];
+    let schemaSearch = await this.db_api.search({
+      selector: { schema: "schema", "data.name":{ "$in":uniqueSchemas } },
+    });
+    //console.log(schemaSearch)
+    let schema = {}
+    schemaSearch.docs.map(itm=>{
+      schema[itm.data.name] = itm.data
+    })
+    //console.log(schema)
+    let d_results = []
+    for (let index = 0; index < search_results.docs.length; index++) {
+      const element = search_results.docs[index];
+      d_results.push(await this._decrypt_doc(schema[element.schema],element))
+    }
+    return {docs:d_results}
   }
 
 /**
