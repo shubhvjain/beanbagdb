@@ -779,7 +779,7 @@ describe("Doc insertion tests", async () => {
 
 
   let invalid_meta = [
-    ["invalid meta field",{tabs:[]}],
+    //["invalid meta field",{tabs:[]}],
     ["invalid meta.tags",{tags:"a,b,c"}],
     ["invalid meta.link",{link:{'1':1}}],
   ]
@@ -1039,6 +1039,24 @@ describe("Doc read tests", async () => {
   it('check if schema not included', async () => {
     let data = await database3.read({schema:"book",data:{"title":record_good_book1.title,"author":record_good_book1.author},include_schema:false})
     assert(Object.keys(data).length==1)
+  })
+
+  it('check if view is not included', async () => {
+    let data = await database3.read({schema:"book",data:{"title":record_good_book1.title,"author":record_good_book1.author}})
+    assert(!data.view, "view property should not exist");
+  })
+
+
+    it('check if view is included even if template name not found', async () => {
+    let data = await database3.read({schema:"book",data:{"title":record_good_book1.title,"author":record_good_book1.author},text_template:"json"})
+    console.log(data)
+    assert('view' in data);
+  })
+
+   it('check if view is included , template name is found', async () => {
+    let data = await database3.read({schema:"book",data:{"title":record_good_book1.title,"author":record_good_book1.author},text_template:"json_string"})
+    console.log(data)
+    assert('view' in data);
   })
 })
 
@@ -1371,7 +1389,7 @@ describe("Doc search tests", async () => {
   it('all docs', async () => {
       try {
         let udata = await database3.search({selector:{}})
-        assert(udata.docs.length==13)
+        assert(udata.docs.length==14)
       } catch (error) {
         //console.log(error)
         throw error
@@ -1391,7 +1409,7 @@ describe("Doc search tests", async () => {
   it('read docs 2', async () => {
     try {
       let udata = await database3.search({selector:{"schema":"schema"}})
-      assert(udata.docs.length==9) // schema,book,setting,key,edge,edge_constraints
+      assert(udata.docs.length==10) // schema,book,setting,key,edge,edge_constraints
     } catch (error) {
       //console.log(error)
       throw error

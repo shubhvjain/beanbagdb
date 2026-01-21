@@ -39,11 +39,12 @@ export class BeanBagDB {
    * @param {function} db_instance.utils.decrypt - Decrypts a document.
    * @param {function} db_instance.utils.ping - Checks the database connection.
    * @param {function} db_instance.utils.validate_schema - Validates the database schema.
+   * @param {function} db_instance.utils.compile_template - Compiles a text template with data. {}
    */
   constructor(db_instance) {
     this.util_check_required_fields(["name", "encryption_key", "api", "utils", "db_name"],db_instance)
     this.util_check_required_fields(["insert", "update", "delete", "search", "get", "createIndex"],db_instance.api)
-    this.util_check_required_fields(["encrypt", "decrypt", "ping", "validate_schema"],db_instance.utils)
+    this.util_check_required_fields(["encrypt", "decrypt", "ping", "validate_schema","compile_template"],db_instance.utils)
 
     if (db_instance.encryption_key.length < 20) {
       throw new ValidationError([{ message: BeanBagDB.error_codes.key_short }]);
@@ -60,7 +61,7 @@ export class BeanBagDB {
     };
     this._version = this._get_current_version();
     this.active = false;
-    this.plugins = {};
+    this.apps = {}; // this is where external apps load their scripts 
     console.log("Run ready() now");
   }
 
@@ -183,9 +184,9 @@ export class BeanBagDB {
    * @async
    * @returns {Promise<void>} - Resolves when the database has been verified and initialized.
    */
-  async ready() {
-    // TODO Ping db
-    console.log("running ready....")
+
+  async check_ready(){
+    console.log("checking if DB is ready to be used")
     let version_search = await this.db_api.search({
       selector: { schema: "system_setting", "data.name": "beanbagdb_system" },
     })
@@ -196,12 +197,22 @@ export class BeanBagDB {
       this.active = doc["data"]["value"]["version"] == this._version;
       this.meta.beanbagdb_version_db = doc["data"]["value"]["version"];
     }
-    if (this.active) {
-      console.log("Ready");
+    if(!this.active){console.log("Version mismatch.Init of default required")}
+    return this.active
+  }
+
+  async ready(init_automatically=true) {
+    let ready = await this.check_ready()
+
+    if (ready) {
+      console.log("Ready.Set.Go");
     } else {
-      console.log("Not ready. Init required")
-      //throw new Error("Initialization required")
-      await this.initialize();
+      if(init_automatically){
+        console.log("Initializing")
+        await this.initialize();
+      }else{
+        throw new Error("DB cannot be used because there is a version mismatch between the DB and the script. Since automatically init flag was set to true, exiting")
+      }
     }
   }
 
@@ -346,7 +357,8 @@ export class BeanBagDB {
       
       // add a new log 
       let new_log_doc =  this._get_blank_doc("system_log")
-      new_log_doc.data = {text,data:{steps},time:this.util_get_now_unix_timestamp(),app:app_data.app_id}
+      new_log_doc.data = {text,steps,app:app_data.app_id}
+      new_log_doc.meta.title = text
       await this.db_api.insert(new_log_doc);
       console.log("init logged")
 
@@ -410,7 +422,7 @@ export class BeanBagDB {
     // if(input.schema=="system_edge"){throw new DocCreationError("This type of record can only be created through the create_edge api")}
     if(Object.keys(input.data).length==0){throw new DocCreationError(`No data provided`)}
     try {
-      let doc_obj = await this._insert_pre_checks(input.schema, input.data,input?.meta||{}, input?.settings||{});
+      let doc_obj = await this._insert_pre_checks(input.schema, input.data,input?.meta||{}, input?.app||{} ,input?.settings||{});
       let new_rec = await this.db_api.insert(doc_obj);
       return {_id:new_rec["id"],_rev : new_rec["rev"] ,...doc_obj};
     } catch (error) {
@@ -434,6 +446,7 @@ export class BeanBagDB {
  * @param {string} [criteria.schema] - The schema name used when searching by primary keys.
  * @param {Object} [criteria.data] - Data object containing the schema's primary keys for search.
  * @param {string} [criteria.include_schema] - Whether to include the schema object in the returned result.
+ * @param {string} [criteria.text_template] - The name of the text template. If provided, an additional field called 'view' is returned with the document in the specified text format. 
  * 
  * @returns {Promise<Object>} - Returns an object with the document (`doc`) and optionally the schema (`schema`).
  * 
@@ -479,6 +492,12 @@ export class BeanBagDB {
 
     // decrypt the document 
     obj.doc = await this._decrypt_doc(data_schema["data"], obj.doc)
+
+    if(criteria.text_template){
+      let doc_view = this._compile_template(criteria.text_template,data_schema["data"],obj.doc)
+      obj["view"] = doc_view
+    }
+
 
     return obj;
   }
@@ -533,7 +552,7 @@ export class BeanBagDB {
     } = params;
 
     if(!criteria){throw new DocUpdateError("Doc search criteria not provided")}
-    if(!updates){throw new DocUpdateError("No updates provided")}
+    if(!updates){throw new DocUpdateError("No updates provided. Format {'update':{'data':{...selected fields},'meta':{},'app':{... used by apps to manage app data} }}")}
 
     // making a big assumption here : primary key fields cannot be edited
     // so updating the doc will not generate primary key conflicts
@@ -594,7 +613,8 @@ export class BeanBagDB {
     if (updates.meta) {
       let m_sch = sys_sch.editable_metadata_schema;
       let editable_fields = Object.keys(m_sch["properties"]);
-      let allowed_meta = this.util_filter_object(updates.meta, editable_fields);
+      //let allowed_meta = this.util_filter_object(updates.meta, editable_fields);
+      let allowed_meta = {...full_doc["meta"], ...updates.meta}
       allowed_meta = this.util_validate_data({schema:m_sch, data:allowed_meta});
       // if update has a link ,then check if it already exists 
       if (allowed_meta.link){
@@ -609,9 +629,55 @@ export class BeanBagDB {
         }
       }
 
-      full_doc["meta"] = { ...full_doc["meta"], ...allowed_meta };
+      full_doc["meta"] = {...allowed_meta} ;
       something_to_update = true
     }
+
+    /**
+     * to update app data
+     * app {  key:{mode:"update|replace|append|remove",data:{}}  }
+     */
+
+    if(updates.app){
+      if(!full_doc.app){ full_doc["app"]={}}
+      //if(update_source=="api"){throw new DocUpdateError(`Invalid update source. Only an app can update app data of the doc. You must specify an app name as "update_source" `)}
+      Object.entries(updates.app).forEach(([appName, update]) => {
+        if (!update || typeof update !== 'object' || !update.mode || !update.data) {
+            console.warn(`Invalid update format for ${appName}`);
+            throw new DocUpdateError(`Invalid update format for app ${appName}. Must be an object {mode:"update|replace|append|remove", data:{} }`)
+        }
+        switch (update.mode) {
+            case 'update':
+                full_doc.app[appName] = { 
+                    ...full_doc.app[appName], 
+                    ...update.data 
+                };
+                something_to_update = true
+                break;
+            case 'replace':
+                full_doc.app[appName] = update.data;
+                something_to_update = true
+                break;
+            case 'append':
+                Object.entries(update.data).forEach(([key, value]) => {
+                    if (!Array.isArray(full_doc.app[appName]?.[key])) {
+                        full_doc.app[appName] = full_doc.app[appName] || {};
+                        full_doc.app[appName][key] = [];
+                    }
+                    full_doc.app[appName][key].push(value);
+                });
+                something_to_update = true
+                break;
+            case 'remove':
+                delete full_doc.app[appName];
+                something_to_update = true
+                break;
+            default:
+              throw new DocUpdateError(  `Unknown mode: ${update.mode} app ${appName}. Must be an object {mode:"update|replace|append|remove", data:{} }`)
+        }
+      });
+    }
+
     if(something_to_update){
       // encrypt the data again since read returns decrypted data
       full_doc = await this._encrypt_doc(schema, full_doc); 
@@ -663,8 +729,36 @@ export class BeanBagDB {
     //if (!criteria["selector"]["schema"]) {
     //  throw new Error("The search criteria must contain the schema");
     //}
-    const results = await this.db_api.search(criteria);
+    let results = await this.db_api.search(criteria);
+    let def_options = {decrypt_docs:false}
+    let options = { ...def_options, ...criteria?.options||{},  }
+    // console.log(options)
+    if(options["decrypt_docs"]){
+      if(results.docs.length>0){
+        results = await this._decrypt_docs(results)
+      }       
+    }
+
     return results;
+  }
+
+  async _decrypt_docs(search_results){
+    const uniqueSchemas = [...new Set(search_results.docs.map(item => item.schema))];
+    let schemaSearch = await this.db_api.search({
+      selector: { schema: "schema", "data.name":{ "$in":uniqueSchemas } },
+    });
+    //console.log(schemaSearch)
+    let schema = {}
+    schemaSearch.docs.map(itm=>{
+      schema[itm.data.name] = itm.data
+    })
+    //console.log(schema)
+    let d_results = []
+    for (let index = 0; index < search_results.docs.length; index++) {
+      const element = search_results.docs[index];
+      d_results.push(await this._decrypt_doc(schema[element.schema],element))
+    }
+    return {docs:d_results}
   }
 
 /**
@@ -738,6 +832,10 @@ export class BeanBagDB {
           })
           return schemas
         }
+      },
+      editable_meta_schema: async (criteria)=>{
+        let e = sys_sch.editable_metadata_schema
+        return e
       }
     }
     if(!input.type){throw new ValidationError("No type provided. Must be: "+Object.keys(fetch_docs).join(","))}
@@ -762,26 +860,18 @@ export class BeanBagDB {
    * @param {string} plugin_name 
    * @param {object} plugin_module 
    */
-  async load_plugin(plugin_name, plugin_module) {
+  async load_scripts(app_name, app_module) {
     this._check_ready_to_use();
-    this.plugins[plugin_name] = {};
-    //console.log(plugin_module)
-    if(plugin_module.actions){
-      for (let func_name in plugin_module.actions) {
-        if (typeof plugin_module.actions[func_name] == "function") {
-          this.plugins[plugin_name][func_name] = plugin_module.actions[func_name].bind(null,this)
+    this.apps[app_name] = {};
+    if(app_module){
+      for (let func_name in app_module) {
+        if (typeof app_module[func_name] == "function") {
+          this.apps[app_name][func_name] = app_module[func_name].bind(null,this)
         }
       }
+    }else{
+      console.log("app_module is blank")
     }
-
-    if(plugin_module.schemas){
-      await this._upgrade_schema_in_bulk(plugin_module.schemas,true,`Updating ${plugin_name} plugin schemas`)
-    }
-
-    // Check if the plugin has an on_load method and call it
-    // if (typeof this.plugins[plugin_name].on_load === "function") {
-    //   await this.plugins[plugin_name].on_load();
-    // }
   }
 
   /**
@@ -843,7 +933,7 @@ export class BeanBagDB {
  */
 async _create_edge(input){
   console.log(input)
-  let {node1,node2,edge_name,note=""} = input 
+  let {node1,node2,edge_name,note="",level_weight=1} = input 
   this._check_ready_to_use();
   if(!edge_name){throw new ValidationError("edge_name required")}
   if(!node1|| Object.keys(node1).length==0){throw new ValidationError("node1 required")}
@@ -895,10 +985,9 @@ async _create_edge(input){
         errors.push("max limit reached")
       }
     }
-    
     if(errors.length==0){
       // let edge = await this.create({schema:"system_edge",data:})
-      return {node1: node1id , node2: node2id ,edge_name:edge_name ,note:note}
+      return {node1: node1id , node2: node2id ,edge_name:edge_name ,note:note,level_weight}
     }else{
       throw new RelationError(errors)
     }
@@ -907,7 +996,7 @@ async _create_edge(input){
     if(error instanceof DocNotFoundError){
       let doc = {node1:"*",node2:"*",name:edge_name,note:note}
       let new_doc = await this.create({schema:"system_edge_constraint",data:doc}) 
-      return {node1: n1.doc._id,node2: n2.doc._id,edge_name:edge_name ,note:note}
+      return {node1: n1.doc._id,node2: n2.doc._id,edge_name:edge_name ,note:note,level_weight}
     }else{
       throw error
     }  
@@ -963,6 +1052,80 @@ _check_nodes_edge(node1Rule, node2Rule, schema1, schema2) {
 ///////////////////////////////////////////////////////////
 //////////////// Internal methods ////////////////////////
 //////////////////////////////////////////////////////////
+
+_compile_template(template_name,schema_doc,doc_obj){
+  /**
+   * generates text for the doc by compiling the provided template.
+   */
+  try {
+    if(!template_name||!schema_doc||!doc_obj){
+      throw new Error("Incomplete info provided")
+    }
+    let template_info = schema_doc.settings?.text_templates[template_name]
+    if(!template_info){
+      throw Error("Template not found")
+    }
+    if (template_info.engine == "js_script") {
+      
+      const runScript = (script, data) => {
+        const cleanScript = script
+          .replace(/\\n/g, '\n')
+          .replace(/\\t/g, '\t')
+          .trim();
+
+        if (!cleanScript) {
+          throw new Error("Empty script provided");
+        }
+
+        const funcBody = `
+          "use strict";
+          const {doc, schema} = arguments[0] || {};
+          ${cleanScript}
+        `;
+
+        try {
+          const func = new Function(funcBody);
+          const result = func(data);
+          if (result && typeof result.text === 'string') {
+            return result;
+          }
+          throw new Error("Script must return {text: '...'}");
+        } catch (parseError) {
+          throw new Error(`Script parse error: ${parseError.message}\nScript: ${cleanScript.substring(0, 100)}...`);
+        }
+      };
+      
+      let result = runScript(template_info.template, {
+        doc: doc_obj,
+        schema: schema_doc,
+      });
+      // if (!result.text) {
+      //   throw new Error("js_script template must return {'text': '...'}");
+      // }
+      return result.text;
+    } else if (this.utils.compile_template[template_info.engine]) {
+      let result = this.utils.compile_template[template_info.engine](
+        template_info.template,
+        {
+          doc: doc_obj,
+          schema: schema_doc,
+        },
+      );
+      if (!result.text) {
+        throw new Error(`${template_name} template must return {'text': '...'}`);
+      }
+      return result.text
+    } else {
+      throw Error(
+        `The engine ${template_info.engine} is not available in the current instance of BBDB.`,
+      );
+    }
+
+  } catch (error) {
+    let text = `Unable to compile the template ${template_name}.Error: ${error.message}`
+    return text
+  }
+}
 
 
 async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgrade in bulk"){
@@ -1070,16 +1233,16 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
       throw new Error("Schema name not provided for the blank doc");
     }
     let dt = this.util_get_now_unix_timestamp()
-    let title = `${schema_name} document - ${dt}`
+    let title = `${dt}`
     let doc = {
       data: {},
       meta: {
         created_on: dt,
         tags: [],
-        app: {},
         link: this.util_generate_random_link(), // there is a link by default. overwrite this if user provided one but only before checking if it is unique
         title: title
       },
+      app:{},
       schema: schema_name,
     };
     return doc;
@@ -1160,7 +1323,7 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
    *
    * @throws {Error} If validation fails, or the document already exists.
    */
-  async _insert_pre_checks(schema, data, meta = {}, settings = {}) {
+  async _insert_pre_checks(schema, data,  meta = {}, app={} ,settings = {}) {
     // schema search
     let sch_search = await this.search({selector: { schema: "schema", "data.name": schema }})
     if (sch_search.docs.length == 0) {throw new DocCreationError(`The schema "${schema}" does not exists`)}
@@ -1176,6 +1339,19 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
     // validate meta
     if(Object.keys(meta).length>0){
       meta = this.util_validate_data({schema:sys_sch.editable_metadata_schema, data:meta})
+    }
+
+    if(Object.keys(app).length>0){
+      let app_schema = {
+        "type": "object",
+        "patternProperties": {
+          ".*": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
+      }
+      let app1 = this.util_validate_data({schema:app_schema, data:app})
     }
     
 
@@ -1220,6 +1396,9 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
     // if meta exists
     if(meta){
       doc_obj["meta"] = {...doc_obj["meta"],...meta};
+    }
+    if(app){
+      doc_obj["app"] = app
     }
     return doc_obj;
   }

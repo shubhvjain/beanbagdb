@@ -135,3 +135,5 @@ test_database_*
 docs-static
 
 cli
+
+notes.txt
