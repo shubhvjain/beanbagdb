@@ -122,6 +122,11 @@ const pdb = new PouchDB(dbname);
         const valid = validate(data_copy);
 
         return {valid,validate,data:data_copy}
+      },
+      "compile_template":{
+        "ejs":()=>{
+          return {text:""}
+        }
       }
     },
   }

@@ -11,7 +11,7 @@ export const default_app = {
       active: true,
       description: "Meta-schema or the schema for defining other schemas",
       system_generated: true,
-      version: 1.25,
+      version: 1.30,
       title: "Schema document",
       schema: {
         type: "object",
@@ -133,6 +133,39 @@ export const default_app = {
                 default: "human",
                 description:
                   "The height and width should be 25px",
+              },
+              text_templates: {
+                "type": "object",
+                "title":"Text templates for the schema",
+                "description":"Define templates that compile and generate text  for an individual document in the database",
+                "default":{ "json_string":{engine:"js_script","format":"plain",template: "const pretty = JSON.stringify(doc, null, 2);\nreturn {text: pretty};","description":"Generates a stringified JSON as plain text"}  },
+                "patternProperties": {
+                  "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+                    "type": "object",
+                    "required": ["engine", "template"],
+                    "properties": {
+                      "engine": {
+                        "type": "string",
+                        "enum": ["handlebars","ejs","js_script","mustache"],
+                        "description": "The templating engine used to render the template. js_script is when the template is code in javascript. All template compiler must returns an object `{text:'...'}`"
+                      },
+                      "format": {
+                        "type": "string",
+                        "description": "The output format of the template. Eg plain,markdown,html,tex"
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "A human-readable description of the template"
+                      },
+                      "template": {
+                        "type": "string",
+                        "description": "The actual template string (must be compatible with the selected engine). Assume that the engine has access to the following json: { doc:{meta, data, app, _schema, schema, id}  , ... other related data}"
+                      },
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false,
               }
             },
             required: [
@@ -390,7 +423,7 @@ export const default_app = {
       schema: {
         type: "object",
         additionalProperties: true,
-        required: ["script","type","version"],
+        required: ["script","type","version","name"],
         properties: {
           type: {
             type: "string",

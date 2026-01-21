@@ -1040,6 +1040,24 @@ describe("Doc read tests", async () => {
     let data = await database3.read({schema:"book",data:{"title":record_good_book1.title,"author":record_good_book1.author},include_schema:false})
     assert(Object.keys(data).length==1)
   })
+
+  it('check if view is not included', async () => {
+    let data = await database3.read({schema:"book",data:{"title":record_good_book1.title,"author":record_good_book1.author}})
+    assert(!data.view, "view property should not exist");
+  })
+
+
+    it('check if view is included even if template name not found', async () => {
+    let data = await database3.read({schema:"book",data:{"title":record_good_book1.title,"author":record_good_book1.author},text_template:"json"})
+    console.log(data)
+    assert('view' in data);
+  })
+
+   it('check if view is included , template name is found', async () => {
+    let data = await database3.read({schema:"book",data:{"title":record_good_book1.title,"author":record_good_book1.author},text_template:"json_string"})
+    console.log(data)
+    assert('view' in data);
+  })
 })
 
 /**

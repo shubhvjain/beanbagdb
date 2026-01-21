@@ -39,11 +39,12 @@ export class BeanBagDB {
    * @param {function} db_instance.utils.decrypt - Decrypts a document.
    * @param {function} db_instance.utils.ping - Checks the database connection.
    * @param {function} db_instance.utils.validate_schema - Validates the database schema.
+   * @param {function} db_instance.utils.compile_template - Compiles a text template with data. {}
    */
   constructor(db_instance) {
     this.util_check_required_fields(["name", "encryption_key", "api", "utils", "db_name"],db_instance)
     this.util_check_required_fields(["insert", "update", "delete", "search", "get", "createIndex"],db_instance.api)
-    this.util_check_required_fields(["encrypt", "decrypt", "ping", "validate_schema"],db_instance.utils)
+    this.util_check_required_fields(["encrypt", "decrypt", "ping", "validate_schema","compile_template"],db_instance.utils)
 
     if (db_instance.encryption_key.length < 20) {
       throw new ValidationError([{ message: BeanBagDB.error_codes.key_short }]);
@@ -445,6 +446,7 @@ export class BeanBagDB {
  * @param {string} [criteria.schema] - The schema name used when searching by primary keys.
  * @param {Object} [criteria.data] - Data object containing the schema's primary keys for search.
  * @param {string} [criteria.include_schema] - Whether to include the schema object in the returned result.
+ * @param {string} [criteria.text_template] - The name of the text template. If provided, an additional field called 'view' is returned with the document in the specified text format. 
  * 
  * @returns {Promise<Object>} - Returns an object with the document (`doc`) and optionally the schema (`schema`).
  * 
@@ -490,6 +492,12 @@ export class BeanBagDB {
 
     // decrypt the document 
     obj.doc = await this._decrypt_doc(data_schema["data"], obj.doc)
+
+    if(criteria.text_template){
+      let doc_view = this._compile_template(criteria.text_template,data_schema["data"],obj.doc)
+      obj["view"] = doc_view
+    }
+
 
     return obj;
   }
@@ -1044,6 +1052,80 @@ _check_nodes_edge(node1Rule, node2Rule, schema1, schema2) {
 ///////////////////////////////////////////////////////////
 //////////////// Internal methods ////////////////////////
 //////////////////////////////////////////////////////////
+
+_compile_template(template_name,schema_doc,doc_obj){
+  /**
+   * generates text for the doc by compiling the provided template.
+   */
+  try {
+    if(!template_name||!schema_doc||!doc_obj){
+      throw new Error("Incomplete info provided")
+    }
+    let template_info = schema_doc.settings?.text_templates[template_name]
+    if(!template_info){
+      throw Error("Template not found")
+    }
+    if (template_info.engine == "js_script") {
+      
+      const runScript = (script, data) => {
+        const cleanScript = script
+          .replace(/\\n/g, '\n')
+          .replace(/\\t/g, '\t')
+          .trim();
+
+        if (!cleanScript) {
+          throw new Error("Empty script provided");
+        }
+
+        const funcBody = `
+          "use strict";
+          const {doc, schema} = arguments[0] || {};
+          ${cleanScript}
+        `;
+
+        try {
+          const func = new Function(funcBody);
+          const result = func(data);
+          if (result && typeof result.text === 'string') {
+            return result;
+          }
+          throw new Error("Script must return {text: '...'}");
+        } catch (parseError) {
+          throw new Error(`Script parse error: ${parseError.message}\nScript: ${cleanScript.substring(0, 100)}...`);
+        }
+      };
+      
+      let result = runScript(template_info.template, {
+        doc: doc_obj,
+        schema: schema_doc,
+      });
+      // if (!result.text) {
+      //   throw new Error("js_script template must return {'text': '...'}");
+      // }
+      return result.text;
+    } else if (this.utils.compile_template[template_info.engine]) {
+      let result = this.utils.compile_template[template_info.engine](
+        template_info.template,
+        {
+          doc: doc_obj,
+          schema: schema_doc,
+        },
+      );
+      if (!result.text) {
+        throw new Error(`${template_name} template must return {'text': '...'}`);
+      }
+      return result.text
+    } else {
+      throw Error(
+        `The engine ${template_info.engine} is not available in the current instance of BBDB.`,
+      );
+    }
+
+  } catch (error) {
+    let text = `Unable to compile the template ${template_name}.Error: ${error.message}`
+    return text
+  }
+}
 
 
 async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgrade in bulk"){
