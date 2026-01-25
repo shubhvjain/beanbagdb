@@ -226,7 +226,7 @@ export const default_app = {
       },
     },
     {
-      version: 1,
+      version: 1.1,
       system_generated: true,
       description:
         "The system relies on these settings for proper functioning or enabling optional features.",
@@ -246,6 +246,7 @@ export const default_app = {
           },
           value: {
             type: ["array", "object"],
+            default:{key:"value"}
           },
         },
       },
@@ -464,10 +465,10 @@ export const default_app = {
     {
       name: "system_text",
       system_generated: true,
-      title: "Plain text",
+      title: "Text",
       active: true,
-      version: 1,
-      description: "Plain text nothing more",
+      version: 1.1,
+      description: "Plain text with optional formatting",
       schema: {
         type: "object",
         additionalProperties: false,
@@ -475,7 +476,13 @@ export const default_app = {
         properties: {
           text: {
             type: "string",
-            default:"Text..."
+            default:"Text...",
+            description:"Content"
+          }, 
+          format: {
+            type: "string",
+            default:"plain",
+            description:"Content format"
           }, 
         },
       },
