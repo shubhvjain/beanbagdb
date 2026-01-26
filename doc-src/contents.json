@@ -1,15 +1,12 @@
 {
-  "0_about": {
-    "title": "About BeanBagDB"
-  },
-  "1_getting-started": {
+  "getting-started": {
     "title": "Getting Started"
   },
-  "2_schema": {
+  "schema": {
     "title": "How to create a schema?"
   },
 
-  "3_plugins": {
+  "plugins": {
     "title": "How to use plugins?"
   }
 }

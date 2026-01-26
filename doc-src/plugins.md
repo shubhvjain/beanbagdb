@@ -1,4 +1,4 @@
-# How to use plugins
+to use a plugin: 
 
 ```
 // MyPlugin.js

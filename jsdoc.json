@@ -8,14 +8,26 @@
     "destination": "./docs-static",  
     "recurse": true,
     "readme":"./index.md",
-    "tutorials": "./doc-src"
+    "tutorials": "./doc-src",
+    "template": "node_modules/docdash"
   },
   "plugins": [
     "plugins/markdown"  
   ],
   "templates": {
     "default": {
-      "outputSourceFiles": false
+      "outputSourceFiles": false,
+      "staticFiles": {
+        "include": ["./doc-src/custom-dark.css"]
+      }
     }
+  },
+   "markdown": {
+    "idInHeadings": true
+  },
+  "docdash":{
+    "sort":false,
+    "search":false,
+    "scripts":["custom-dark.css"]
   }
 }

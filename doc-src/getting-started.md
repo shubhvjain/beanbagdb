@@ -1,6 +1,3 @@
-# Getting started
-
-
 
 ### Nodes and edges
 

@@ -1,6 +1,6 @@
 {
   "name": "beanbagdb",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "description": "A JS library to introduce a schema layer to a No-SQL local database",
   "main": "src/index.js",
   "module": "src/index.js",
@@ -30,6 +30,7 @@
     "ajv": "^8.17.1",
     "chai": "^5.1.1",
     "chai-as-promised": "^8.0.0",
+    "docdash": "^2.0.2",
     "dotenv": "^16.4.5",
     "jsdoc": "^4.0.3",
     "mocha": "^10.7.3",

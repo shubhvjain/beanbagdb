@@ -137,3 +137,5 @@ docs-static
 cli
 
 notes.txt
+
+.vscode/
