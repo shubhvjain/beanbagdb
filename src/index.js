@@ -836,6 +836,20 @@ export class BeanBagDB {
       editable_meta_schema: async (criteria)=>{
         let e = sys_sch.editable_metadata_schema
         return e
+      },
+      related_doc: async (criteria) =>{
+        // criteria can be link or id
+        let get_doc = await this.read(criteria)
+        if(get_doc.doc){
+            let node = get_doc.doc._id 
+            let data = await this.search({selector:{
+              "schema":"system_edge",
+              "$or":[ {'data.node1':{"$in":node}},{'data.node2':{"$in":node}}]
+            },fields:["_id","meta","schema"]})
+            return data
+        }else{
+          throw new ValidationError("Doc not found")
+        }
       }
     }
     if(!input.type){throw new ValidationError("No type provided. Must be: "+Object.keys(fetch_docs).join(","))}
