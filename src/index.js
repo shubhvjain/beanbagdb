@@ -844,7 +844,7 @@ export class BeanBagDB {
             let node = get_doc.doc._id 
             let data = await this.search({selector:{
               "schema":"system_edge",
-              "$or":[ {'data.node1':{"$in":node}},{'data.node2':{"$in":node}}]
+              "$or":[ {'data.node1':{"$in":[node]}},{'data.node2':{"$in":[node]}}]
             },fields:["_id","meta","schema"]})
             return data
         }else{
