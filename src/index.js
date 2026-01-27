@@ -845,8 +845,23 @@ export class BeanBagDB {
             let data = await this.search({selector:{
               "schema":"system_edge",
               "$or":[ {'data.node1':{"$in":[node]}},{'data.node2':{"$in":[node]}}]
-            },fields:["_id","meta","schema"]})
-            return data
+            },fields:["_id","meta","data"]})
+
+            // console.log(rel_docs)
+            if(data.docs.length>0){
+              let record_details = data.docs.map(itm=>{return itm._id})
+              let records = await this.search({selector:{"_id":{"$in":record_details}},fields:["_id","meta"]})
+              let details = {}
+              records.docs.map(itm=>{details[itm._id] = itm.meta})
+              let edges = []
+              data.docs.map(itm=>{
+                edges.push({node1: itm.data.node1, node2: itm.data.node2, label: itm.data.edge_name, edge_id: itm._id })
+              })
+              return{edges, details }
+            }else{
+              return {}
+            }
+    
         }else{
           throw new ValidationError("Doc not found")
         }
