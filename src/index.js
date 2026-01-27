@@ -849,7 +849,8 @@ export class BeanBagDB {
 
             // console.log(rel_docs)
             if(data.docs.length>0){
-              let record_details = data.docs.map(itm=>{return itm._id})
+              let record_details = []
+              data.docs.map(itm=>{record_details.push(itm.data.node1);record_details.push(itm.data.node2)})
               let records = await this.search({selector:{"_id":{"$in":record_details}},fields:["_id","meta"]})
               let details = {}
               records.docs.map(itm=>{details[itm._id] = itm.meta})

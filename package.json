@@ -1,6 +1,6 @@
 {
   "name": "beanbagdb",
-  "version": "0.8.10",
+  "version": "0.8.11",
   "description": "A JS library to introduce a schema layer to a No-SQL local database",
   "main": "src/index.js",
   "module": "src/index.js",
