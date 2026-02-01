@@ -188,16 +188,14 @@ export class BeanBagDB {
   async check_ready(){
     console.log("checking if DB is ready to be used")
     let version_search = await this.db_api.search({
-      selector: { schema: "system_setting", "data.name": "beanbagdb_system" },
+      selector: { schema: "system_app", "data.name": "beanbagdb_system" },
     })
-    //console.log(version_search)
     if (version_search.docs.length > 0) {
       let doc = version_search.docs[0];
-      //console.log(doc)
-      this.active = doc["data"]["value"]["version"] == this._version;
-      this.meta.beanbagdb_version_db = doc["data"]["value"]["version"];
+      this.active = doc["data"]["version"] == this._version;
+      this.meta.beanbagdb_version_db = doc["data"]["version"];
     }
-    if(!this.active){console.log("Version mismatch.Init of default required")}
+    if(!this.active){console.log("Version mismatch. Initialization of the default system app is required")}
     return this.active
   }
 
@@ -235,11 +233,11 @@ export class BeanBagDB {
     // this works on its own but is usually called by ready automatically if required
     // check for schema_scehma : if yes, check if latest and upgrade if required, if no create a new schema doc
     try {
-      let app_data = await this.initialize_app(sys_sch.default_app)
-      // console.log(app_data)
+      let app_new_records = await this._initialize_app_schema(sys_sch.default_app)
       this.meta.beanbagdb_version_db = this._version;
       this.active = true;
-      return app_data      
+      let app_records = await this._initialize_app_records(sys_sch.default_app,app_new_records)
+      return        
     } catch (error) {
       console.log("Error in initializing instance")
       console.log(error)
@@ -249,11 +247,11 @@ export class BeanBagDB {
   }
 
   /**
-   * Install/Updates an app in the database. 
-   * This should be called before using any
+   * Install schemas defined in an app and returns a list of document ids
+   * this is part 1 of initializing an app 
    * @param {Object} app_data
    */
-  async initialize_app(app_data_input){
+  async _initialize_app_schema(app_data_input){
     // calculate the app_version 
     if(!app_data_input){throw new Error("app_data_input is required")}
     let app_data = this.util_validate_data({schema:sys_sch.app_data_schema,data:app_data_input})
@@ -261,22 +259,21 @@ export class BeanBagDB {
     app_data.schemas.map(sch=>{
       latest_version = latest_version + sch.version
       // update the source of schemas to the app 
-      sch["settings"]["install_source"] = `app:${app_data.app_id}`
-    })
-    app_data.records.map(sch=>{latest_version = latest_version + sch.version})
-    
-
-    // check if app setting record exists 
+      sch["settings"]["install_source"] = `app:${app_data.name}`
+    })    
+    // check if app record exists 
     let version_search = await this.db_api.search({
-      selector: { schema: "system_setting", "data.name": app_data.app_id },
+      selector: { schema: "system_app", "data.name": app_data.name },
     })
 
     let update_required = true 
     let doc 
+    let app_doc_id = null;
 
     if (version_search.docs.length > 0) {
       doc = version_search.docs[0];
-      if(doc["data"]["value"]["version"] == latest_version){
+      app_doc_id = doc["_id"]
+      if(doc["data"]["version"] == latest_version){
         update_required = false
       }
     }
@@ -286,12 +283,14 @@ export class BeanBagDB {
     // if version is latest no additional steps required
     // version mismatch => update all docs
 
-    let text = `Initializing ${app_data.app_id} app to v.${latest_version}`
+    // this is to store all doc ids related to the app 
+    let inserted_document_ids = []
     let steps = ["update started"]
 
     for (let index = 0; index < app_data.schemas.length; index++) {
       const schema_name = app_data.schemas[index]["name"];
       const schema_data = app_data.schemas[index]
+      const schema_title =  `Schema ${ app_data.schemas[index]['title']? app_data.schemas[index]['title'] :schema_name}` 
       steps.push(`checking.${schema_name}`)
       try {
         // console.log(schema_name)
@@ -301,7 +300,7 @@ export class BeanBagDB {
           let full_doc = await this.db_api.get(schema1["_id"]);
           full_doc["data"] = { ...schema_data };
           full_doc["meta"]["updated_on"] = this.util_get_now_unix_timestamp();
-          console.log(full_doc)
+          // console.log(full_doc)
           await this.db_api.update(full_doc);
           
           steps.push(`new.${schema_name}.v=${schema_data.version}`);
@@ -312,12 +311,14 @@ export class BeanBagDB {
         // console.log(error);
         if (error instanceof DocNotFoundError) {
           // inserting new schema doc
-          if(schema_name=="schema"&& app_data.app_id=="beanbagdb_system"){
+          if(schema_name=="schema"&& app_data.name=="beanbagdb_system"){
             // this is to initialize the system schema
             let schema_schema_doc = this._get_blank_doc("schema");
             schema_schema_doc.data = schema_data;
+            schema_schema_doc["meta"]["title"] = schema_title
             //console.log(schema_schema_doc)
-            await this.db_api.insert(schema_schema_doc);
+            let new_db_status = await this.db_api.insert(schema_schema_doc);
+            inserted_document_ids.push(new_db_status?.id)
           }else{
             let system_schema = sys_sch.default_app.schemas[0]["schema"]
             let new_schema_doc = this._get_blank_schema_doc(
@@ -325,7 +326,10 @@ export class BeanBagDB {
               system_schema,
               schema_data
             );
-            await this.db_api.insert(new_schema_doc);
+            new_schema_doc["meta"]["title"] = schema_title
+            let new_db_status = await this.db_api.insert(new_schema_doc);
+            //console.log(new_db_status)
+            inserted_document_ids.push(new_db_status?.id)
           }
           steps.push(`init.${schema_name}.v=${schema_data.version}`);
         }else{
@@ -334,41 +338,111 @@ export class BeanBagDB {
       }
     }
 
-    for (let index = 0; index < app_data.records.length; index++) {
-      const schema_name = app_data.records[index]["schema"]
-      const schema_data = app_data.records[index]["record"]
-      const record_title = app_data.records[index]["title"]
-      steps.push(`checking.records.${record_title}`)
-      try {
-        let new_doc = await this.create({schema:schema_name,data:schema_data,meta:app_data.records[index]["meta"]})
-        steps.push(`doc.${record_title}.created`)
-      } catch (error) {
-        if(!(error instanceof DocCreationError)){
-          steps.push(`error in doc ${record_title} insertion: ${error.message}, doc: ${JSON.stringify(schema_data)}`)
-        }
-      }
+    let app_doc = { 
+      "details": app_data.details,
+      "name": app_data.name ,
+      version: latest_version,
+      source: app_data.source
     }
 
-    let app_doc = { ... app_data.meta,app_id: app_data.app_id ,version: latest_version}
     try {
-      // modify the app setting doc 
-      // console.log(app_doc,)
-      await this.modify_setting(app_data.app_id,app_doc,"update")   
+      // App doc 
+      if (app_doc_id){
+        // app doc already exits, it needs to be updated
+        let full_app_doc = await this.db_api.get(app_doc_id);
+        full_app_doc["data"] = app_doc;
+        full_app_doc["meta"]["updated_on"] = this.util_get_now_unix_timestamp();
+        await this.db_api.update(full_app_doc);
+        //console.log("app record updated")
+      }else{
+        // new app doc needs to be created with the version
+        let new_app_doc =  this._get_blank_doc("system_app")
+        new_app_doc.data = app_doc
+        new_app_doc.meta.title = `App - ${app_data.name} - ${app_data.title}`
+        let app_doc_status = await this.db_api.insert(new_app_doc);
+        //console.log(app_doc_status)
+        app_doc_id = app_doc_status?.id
+        steps.push("New app document created")
+        //console.log("app record inserated")
+      }
       
-      // add a new log 
+      // Log doc
       let new_log_doc =  this._get_blank_doc("system_log")
-      new_log_doc.data = {text,steps,app:app_data.app_id}
+      let text = `Initializing ${app_data.name} app to v.${latest_version}`
+      new_log_doc.data = {text,steps,app:app_data.name}
       new_log_doc.meta.title = text
-      await this.db_api.insert(new_log_doc);
-      console.log("init logged")
-
+      let log_doc_status = await this.db_api.insert(new_log_doc);
+      //console.log(log_doc_status)
+      inserted_document_ids.push(log_doc_status?.id)      
     } catch (error) {
-      console.log(error)
-      console.log("error in storing/updating beanbagdb_version")
       throw error
     }
-    return app_doc
+    return inserted_document_ids
   } 
+
+    /**
+   * To install default records and other app related docs. This must be called after ready
+   * This should be called before using any
+   * @param {Object} app_data
+   */
+  async _initialize_app_records(app_data_input,inserted_doc_id=[]){
+    if(!app_data_input){throw new Error("app_data_input is required")}
+    let app_data = this.util_validate_data({schema:sys_sch.app_data_schema,data:app_data_input})
+    //console.log(app_data)
+    // check if app record exists , if not initialize_app_schema needs to be run first
+    let version_search = await this.db_api.search({
+      selector: { schema: "system_app", "data.name": app_data.name },
+    })
+
+
+
+    let doc 
+    let new_docs = [...inserted_doc_id]
+
+    if (version_search.docs.length > 0) {
+      doc = version_search.docs[0];
+    }else{
+      throw new DocNotFoundError("App doc not found. run _initialize_app_schema first")
+    }
+
+    try {
+      // step 1 : add default records if not already present 
+      let dec_keys =  Object.keys(app_data.default_system_docs)
+        for (let index = 0; index < dec_keys.length; index++) {
+          //console.log()
+          let default_doc = app_data.default_system_docs[dec_keys[index]];
+          //console.log(default_doc)
+          let docSearch = await this.db_api.search({
+            selector: default_doc.search_criteria,
+          }); 
+          if(docSearch.docs.length == 0){
+            let new_record = await this.create(default_doc.new_data)
+            new_docs.push(new_record["_id"])
+          }
+        }
+        //console.log(new_docs)
+
+      // step 2: link app doc to all other docs. this is only done if new docs are created
+      let edge_name =  sys_sch.default_app.default_system_docs["app_edge_constraint"]["new_data"]["data"]["name"]
+      let app_doc_id = doc["_id"]
+      let all_links = new_docs.map(itm=>{return this.create({schema:"system_edge",data:{ "edge_name": edge_name, node1:app_doc_id,node2: itm  }})   } )
+      
+      let resp = await Promise.all(all_links);
+      //console.log(resp)
+      return 
+
+    } catch (error) {
+      throw error
+    }
+  } 
+
+  
+  // this main method to initialize external apps
+  async initialize_app(app_data_input){
+    this._check_ready_to_use()
+    let new_ids =  await this._initialize_app_schema(app_data_input)
+    let app_records = await this._initialize_app_records(app_data_input,new_ids)
+  }
 
 
   /**
@@ -388,7 +462,6 @@ export class BeanBagDB {
     });
     await this.db_api.createIndex({ index: { fields: indexes } });
   }
-
 
 
 ////////////////////////////////////////////////////////
@@ -1234,7 +1307,8 @@ async _upgrade_schema_in_bulk(schemas,log_upgrade=false,log_message="Schema Upgr
     let sum = 0 
     // sys_sch.schema_schema.version;
     sys_sch.default_app.schemas.map((item) => {sum = sum + item.version})
-    sys_sch.default_app.records.map((item) => {sum = sum + item.version})
+
+    // Object.keys(sys_sch.default_app.default_docs).map((item) => {sum = sum + sys_sch.default_app.default_docs[item].version})
     if (sum == NaN) {
       throw Error("Error in system schema version numbers");
     }

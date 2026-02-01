@@ -1,10 +1,11 @@
 export const default_app = {
-  app_id: "beanbagdb_system",
-  meta: {
-    name: "beanbagdb_system",
+  name: "beanbagdb_system",
+  title:"Default system app",
+  details: {
     description:
       "This is the default system app required for proper functioning of the database",
   },
+  source:"system",
   schemas: [
     {
       name: "schema",
@@ -12,7 +13,7 @@ export const default_app = {
       description: "Meta-schema or the schema for defining other schemas",
       system_generated: true,
       version: 1.30,
-      title: "Schema document",
+      title: "Meta Schema document",
       schema: {
         type: "object",
         additionalProperties: false,
@@ -493,8 +494,68 @@ export const default_app = {
         svg_icon25:`<svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" fill="currentColor" class="bi bi-justify-left" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M2 12.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m0-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5m0-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5m0-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5"/></svg>`
       },
     },
+    {
+      name: "system_app",
+      system_generated: true,
+      title: "BBDB App",
+      active: true,
+      version: 1,
+      description: "Stores info about an app installed",
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name"],
+        properties: {
+          name: {
+            type: "string",
+            default:"App name",
+            description:"A unique app name"
+          }, 
+          details: {
+            type: "object",
+            additionalProperties: true,
+            title:"Additional details about the app. Copied to the app record the first time it is installed in a DB",
+            default:{}
+          }, 
+          source: {
+            type: "string",
+            default:"",
+            description:"Information about the source of the app"
+          }, 
+
+        },
+      },
+      settings: {
+        primary_keys: ["name"],
+        non_editable_fields: ["name"],
+        encrypted_fields: [],
+        svg_icon25:`<svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" fill="currentColor" class="bi bi-file-earmark" viewBox="0 0 16 16"><path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5z"/></svg>`
+      },
+    },
   ],
-  records: [],
+  default_system_docs:{
+    "app_edge_constraint":{
+      version:1,
+      search_criteria:{
+        schema:"system_edge_constraint",
+        data:{
+          name:"app_related"
+        }
+      },
+      new_data:{
+        schema:"system_edge_constraint",
+        data:{
+          name:"app_related",
+          node1:"system_app",
+          node2:"*",
+          label:"related to the app"
+        },
+        meta:{
+          title:"System Edge constraint to link app docs"
+        }
+      }
+    },
+  },
 };
 
 // this is not stored in the DB. only for validating the metadata during doc update
@@ -535,34 +596,80 @@ export const editable_metadata_schema = {
 export const app_data_schema = {
   additionalProperties: true,
   type: "object",
-  required: ["app_id"],
+  required: ["name","title"],
   properties: {
-    app_id: {
+    name: {
       type: "string",
     },
-    meta: {
+    title: {
+      type: "string",
+      title:"About the app"
+    },
+    details: {
       type: "object",
       additionalProperties: true,
+      title:
+        "Additional details about the app. Copied to the app record the first time it is installed in a DB",
     },
     schemas: {
       type: "array",
       minItems: 1,
-      // each schema must have a version 
+      title:
+        "List of schemas related to this app. Schemas are updated automatically based on a version check. Must be a valid BBDB schema document",
     },
-    records: {
-      type: "array",
-      // each record must have a version 
-      default:[]
-    },
-    default_setting:{
+    default_system_docs: {
       type: "object",
-      additionalProperties:true,
-      default : {
-        primary_keys: [],
-        non_editable_fields: [],
-        encrypted_fields: [],
-        svg_icon25:`<svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" fill="currentColor" class="bi bi-file-earmark" viewBox="0 0 16 16"><path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5z"/></svg>`
-      }
-    }
+      patternProperties: {
+        "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+          $ref: "#/$defs/one_default_record",
+        },
+      },
+    },
+    options: {
+      type: "object",
+      properties: {
+        link_docs: {
+          default: true,
+          type: "boolean",
+          title:
+            "Indicates whether to link all documents related to the app the app doc",
+        },
+      },
+    },
+    source: {
+      type: "string",
+      title:"An optional source for the app"
+    },
+  },
+  $defs: {
+    one_default_record: {
+      type: "object",
+      additionalProperties: true,
+      required:["search_criteria","new_data","version"],
+      properties: {
+        search_criteria: {
+          type: "object",
+          required: ["schema", "data"],
+          properties: {
+            schema: { type: "string" },
+            data: { type: "object" },
+          },
+        },
+        new_data: {
+          type: "object",
+          required: ["schema", "data"],
+          properties: {
+            schema: { type: "string" },
+            data: { type: "object" },
+          },
+          additionalProperties: true,
+        },
+        version:{
+          type: "number",
+          title: "Version of the document",
+          minimum: 0,
+        }
+      },
+    },
   },
 };

@@ -1364,10 +1364,12 @@ describe("Doc search tests", async () => {
     await database3.ready(); // Ensure the database is ready before running tests
     try {
       let a = await database3.create({schema:"schema",data:test_schema})
+      //console.log(a)
       doc_inserted = await database3.create({schema:"book",data:book1,meta:meta})
       let b = await database3.create({schema:"book",data:book2,meta:{...meta,link:"sample2"}})
       //console.log(b)
-      console.log("Ready for more tests...");  
+      console.log("Ready for more tests...");
+      setTimeout(()=>{},100)  
     } catch (error) {
       //console.log("error in before")
       console.log(error)
@@ -1389,7 +1391,7 @@ describe("Doc search tests", async () => {
   it('all docs', async () => {
       try {
         let udata = await database3.search({selector:{}})
-        assert(udata.docs.length==14)
+        assert(udata.docs.length==28)
       } catch (error) {
         //console.log(error)
         throw error
@@ -1406,10 +1408,10 @@ describe("Doc search tests", async () => {
     }
   })
 
-  it('read docs 2', async () => {
+  it('read all schema docs', async () => {
     try {
       let udata = await database3.search({selector:{"schema":"schema"}})
-      assert(udata.docs.length==10) // schema,book,setting,key,edge,edge_constraints
+      assert(udata.docs.length==11) 
     } catch (error) {
       //console.log(error)
       throw error
@@ -1419,7 +1421,7 @@ describe("Doc search tests", async () => {
   it('read docs 3', async () => {
     try {
       let udata = await database3.search({selector:{"meta.link":"sample1"}})
-      assert(udata.docs.length==1) // schema,book,setting,key
+      assert(udata.docs.length==1) 
     } catch (error) {
       //console.log(error)
       throw error
@@ -1429,7 +1431,7 @@ describe("Doc search tests", async () => {
   it('read docs 4', async () => {
     try {
       let udata = await database3.search({selector:{"schema":"book","data":{"title":"Book"}}})
-      assert(udata.docs.length==0) // schema,book,setting,key
+      assert(udata.docs.length==0) 
     } catch (error) {
       //console.log(error)
       throw error
