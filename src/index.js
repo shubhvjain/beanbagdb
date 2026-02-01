@@ -729,7 +729,11 @@ export class BeanBagDB {
     //if (!criteria["selector"]["schema"]) {
     //  throw new Error("The search criteria must contain the schema");
     //}
-    let results = await this.db_api.search(criteria);
+    let search_criteria = {...criteria}
+    if(!criteria["limit"]){
+        search_criteria["limit"]=1000
+    }
+    let results = await this.db_api.search(search_criteria);
     let def_options = {decrypt_docs:false}
     let options = { ...def_options, ...criteria?.options||{},  }
     // console.log(options)
@@ -962,7 +966,7 @@ export class BeanBagDB {
  * @returns {Object}
  */
 async _create_edge(input){
-  console.log(input)
+  //console.log(input)
   let {node1,node2,edge_name,note="",level_weight=1} = input 
   this._check_ready_to_use();
   if(!edge_name){throw new ValidationError("edge_name required")}
